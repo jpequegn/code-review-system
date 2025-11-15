@@ -1,0 +1,16 @@
+.git
+.gitignore
+__pycache__
+.pytest_cache
+.coverage
+*.pyc
+*.pyo
+.env
+.venv
+venv
+.idea
+.vscode
+*.log
+codeproject.db
+.DS_Store
+.env.local

@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  reviewer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: code-reviewer
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:///./codeproject.db
+      LOG_LEVEL: INFO
+    volumes:
+      - ./codeproject.db:/app/codeproject.db
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: local Ollama for LLM
+  ollama:
+    image: ollama/ollama
+    container_name: code-reviewer-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    # Uncomment to enable: profiles: [ollama]
+
+volumes:
+  ollama_data:
