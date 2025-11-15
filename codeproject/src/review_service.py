@@ -20,8 +20,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from src.config import settings
-from src.database import Review, Finding, ReviewStatus, FindingCategory, FindingSeverity
+from src.database import Review, Finding, ReviewStatus, FindingCategory
 from src.analysis.diff_parser import DiffParser
 from src.analysis.analyzer import CodeAnalyzer, AnalyzedFinding
 from src.integrations.github_api import GitHubAPIClient, GitHubAPIError
@@ -33,6 +32,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class ReviewServiceError(Exception):
     """Base exception for review service errors."""
@@ -61,6 +61,7 @@ class AnalysisError(ReviewServiceError):
 # ============================================================================
 # Review Service
 # ============================================================================
+
 
 class ReviewService:
     """

@@ -7,11 +7,11 @@ Parses LLM responses, deduplicates findings, and assigns severity levels.
 
 import logging
 import json
-from typing import List, Dict, Any, Optional, Set, Tuple
+from typing import List, Dict, Any, Optional, Tuple
 
 from src.llm.provider import LLMProvider, get_llm_provider
-from src.analysis.diff_parser import CodeChange, FileDiff
-from src.database import Finding, FindingCategory, FindingSeverity
+from src.analysis.diff_parser import FileDiff
+from src.database import FindingCategory, FindingSeverity
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # Finding Data Model
 # ============================================================================
+
 
 class AnalyzedFinding:
     """
@@ -68,7 +69,11 @@ class AnalyzedFinding:
             Tuple of (category, file_path, line_number, title)
         """
         return (
-            self.category.value if isinstance(self.category, FindingCategory) else self.category,
+            (
+                self.category.value
+                if isinstance(self.category, FindingCategory)
+                else self.category
+            ),
             self.file_path,
             self.line_number,
             self.title.lower().strip(),
@@ -78,6 +83,7 @@ class AnalyzedFinding:
 # ============================================================================
 # Code Analyzer
 # ============================================================================
+
 
 class CodeAnalyzer:
     """
@@ -184,10 +190,7 @@ class CodeAnalyzer:
         """
         try:
             response = self.llm_provider.analyze_security(code_snippet)
-            return self._parse_findings_response(
-                response,
-                FindingCategory.SECURITY
-            )
+            return self._parse_findings_response(response, FindingCategory.SECURITY)
         except Exception as e:
             logger.error(f"Security analysis failed: {str(e)}")
             return []
@@ -204,10 +207,7 @@ class CodeAnalyzer:
         """
         try:
             response = self.llm_provider.analyze_performance(code_snippet)
-            return self._parse_findings_response(
-                response,
-                FindingCategory.PERFORMANCE
-            )
+            return self._parse_findings_response(response, FindingCategory.PERFORMANCE)
         except Exception as e:
             logger.error(f"Performance analysis failed: {str(e)}")
             return []
@@ -257,8 +257,7 @@ class CodeAnalyzer:
             for idx, finding_data in enumerate(findings_list):
                 try:
                     analyzed_finding = self._parse_single_finding(
-                        finding_data,
-                        category
+                        finding_data, category
                     )
                     if analyzed_finding:
                         findings.append(analyzed_finding)
@@ -419,7 +418,4 @@ class CodeAnalyzer:
             FindingSeverity.LOW: 3,
         }
 
-        return sorted(
-            findings,
-            key=lambda f: severity_order.get(f.severity, 99)
-        )
+        return sorted(findings, key=lambda f: severity_order.get(f.severity, 99))

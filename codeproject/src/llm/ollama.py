@@ -5,9 +5,7 @@ Connects to local Ollama instance for running open-source models locally.
 Useful for development and testing without API costs.
 """
 
-import json
 import logging
-from typing import Optional
 
 import requests
 from requests.exceptions import RequestException, Timeout, ConnectionError
@@ -140,9 +138,7 @@ class OllamaProvider(LLMProvider):
                 f"Is Ollama running? Error: {str(e)}"
             )
         except RequestException as e:
-            raise RuntimeError(
-                f"Error connecting to Ollama: {str(e)}"
-            )
+            raise RuntimeError(f"Error connecting to Ollama: {str(e)}")
 
     def analyze_security(self, code_diff: str) -> str:
         """

@@ -10,9 +10,18 @@ Provides:
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, UniqueConstraint, event
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    Text,
+    DateTime,
+    ForeignKey,
+    Enum as SQLEnum,
+    event,
+)
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 
 from src.config import settings
@@ -25,7 +34,9 @@ from src.config import settings
 engine = create_engine(
     settings.database_url,
     # SQLite-specific configuration
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {},
+    connect_args=(
+        {"check_same_thread": False} if "sqlite" in settings.database_url else {}
+    ),
     # Connection pooling for production
     pool_size=10 if "postgresql" in settings.database_url else 0,
     max_overflow=20 if "postgresql" in settings.database_url else 0,
@@ -33,18 +44,16 @@ engine = create_engine(
 
 # Enable foreign key constraints for SQLite
 if "sqlite" in settings.database_url:
+
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_conn, connection_record):
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
+
 # Session factory for creating database sessions
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine
-)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Base class for all ORM models
 Base = declarative_base()
@@ -54,25 +63,29 @@ Base = declarative_base()
 # Enums for ORM Models
 # ============================================================================
 
+
 class ReviewStatus(str, Enum):
     """Status of a code review."""
-    PENDING = "pending"          # Waiting to be analyzed
-    ANALYZING = "analyzing"      # Currently being analyzed by LLM
-    COMPLETED = "completed"      # Analysis complete
-    FAILED = "failed"            # Analysis failed with error
+
+    PENDING = "pending"  # Waiting to be analyzed
+    ANALYZING = "analyzing"  # Currently being analyzed by LLM
+    COMPLETED = "completed"  # Analysis complete
+    FAILED = "failed"  # Analysis failed with error
 
 
 class FindingSeverity(str, Enum):
     """Severity level of a security/performance finding."""
-    CRITICAL = "critical"        # Immediate action required
-    HIGH = "high"                # Should be addressed soon
-    MEDIUM = "medium"            # Should be considered
-    LOW = "low"                  # Nice to have
+
+    CRITICAL = "critical"  # Immediate action required
+    HIGH = "high"  # Should be addressed soon
+    MEDIUM = "medium"  # Should be considered
+    LOW = "low"  # Nice to have
 
 
 class FindingCategory(str, Enum):
     """Category of a code finding."""
-    SECURITY = "security"        # Security vulnerability
+
+    SECURITY = "security"  # Security vulnerability
     PERFORMANCE = "performance"  # Performance/scalability issue
     BEST_PRACTICE = "best_practice"  # Code quality/best practice
 
@@ -81,12 +94,14 @@ class FindingCategory(str, Enum):
 # ORM Models
 # ============================================================================
 
+
 class Review(Base):
     """
     Represents a code review of a GitHub pull request.
 
     Tracks the review status and metadata for each PR analyzed by the system.
     """
+
     __tablename__ = "reviews"
 
     # Primary key
@@ -106,18 +121,19 @@ class Review(Base):
 
     # Review status (pending, analyzing, completed, failed)
     status = Column(
-        SQLEnum(ReviewStatus),
-        default=ReviewStatus.PENDING,
-        nullable=False,
-        index=True
+        SQLEnum(ReviewStatus), default=ReviewStatus.PENDING, nullable=False, index=True
     )
 
     # Timestamps
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
     completed_at = Column(DateTime, nullable=True)
 
     # Relationship to findings
-    findings = relationship("Finding", back_populates="review", cascade="all, delete-orphan")
+    findings = relationship(
+        "Finding", back_populates="review", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Review(id={self.id}, pr_id={self.pr_id}, status={self.status})>"
@@ -130,27 +146,25 @@ class Finding(Base):
     Each finding is associated with a specific review and includes
     location information and suggested fixes.
     """
+
     __tablename__ = "findings"
 
     # Primary key
     id = Column(Integer, primary_key=True, index=True)
 
     # Foreign key to review
-    review_id = Column(Integer, ForeignKey("reviews.id", ondelete="CASCADE"), nullable=False, index=True)
+    review_id = Column(
+        Integer,
+        ForeignKey("reviews.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     # Finding category (security, performance, best_practice)
-    category = Column(
-        SQLEnum(FindingCategory),
-        nullable=False,
-        index=True
-    )
+    category = Column(SQLEnum(FindingCategory), nullable=False, index=True)
 
     # Severity level (critical, high, medium, low)
-    severity = Column(
-        SQLEnum(FindingSeverity),
-        nullable=False,
-        index=True
-    )
+    severity = Column(SQLEnum(FindingSeverity), nullable=False, index=True)
 
     # Short title of the finding
     title = Column(String(255), nullable=False)
@@ -168,7 +182,9 @@ class Finding(Base):
     suggested_fix = Column(Text, nullable=True)
 
     # Timestamp
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
 
     # Relationship to review
     review = relationship("Review", back_populates="findings")
@@ -180,6 +196,7 @@ class Finding(Base):
 # ============================================================================
 # Database Initialization
 # ============================================================================
+
 
 def init_db() -> None:
     """
@@ -193,6 +210,7 @@ def init_db() -> None:
 # ============================================================================
 # FastAPI Dependency
 # ============================================================================
+
 
 def get_db() -> Session:
     """

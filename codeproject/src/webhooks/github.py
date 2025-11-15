@@ -7,12 +7,10 @@ Supports PR opened and synchronize (push) events.
 
 import hmac
 import hashlib
-import json
 import logging
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
-from src.config import settings
 from src.database import Review, ReviewStatus
 
 logger = logging.getLogger(__name__)
@@ -22,9 +20,11 @@ logger = logging.getLogger(__name__)
 # GitHub Webhook Payload Models
 # ============================================================================
 
+
 @dataclass
 class GitHubUser:
     """GitHub user information."""
+
     login: str
     id: int
 
@@ -32,6 +32,7 @@ class GitHubUser:
 @dataclass
 class GitHubRepository:
     """GitHub repository information."""
+
     id: int
     name: str
     full_name: str
@@ -41,6 +42,7 @@ class GitHubRepository:
 @dataclass
 class GitHubPullRequest:
     """GitHub pull request information."""
+
     id: int
     number: int
     title: str
@@ -55,6 +57,7 @@ class GitHubPullRequest:
 @dataclass
 class GitHubWebhookPayload:
     """GitHub webhook payload."""
+
     action: str  # opened, synchronize, closed, etc.
     pull_request: GitHubPullRequest
     repository: GitHubRepository
@@ -65,10 +68,9 @@ class GitHubWebhookPayload:
 # Webhook Signature Verification
 # ============================================================================
 
+
 def verify_github_signature(
-    payload: bytes,
-    signature_header: str,
-    webhook_secret: str
+    payload: bytes, signature_header: str, webhook_secret: str
 ) -> bool:
     """
     Verify GitHub webhook signature.
@@ -97,9 +99,7 @@ def verify_github_signature(
 
     # Compute expected signature
     expected_signature = hmac.new(
-        webhook_secret.encode(),
-        payload,
-        hashlib.sha256
+        webhook_secret.encode(), payload, hashlib.sha256
     ).hexdigest()
 
     # Use constant-time comparison to prevent timing attacks
@@ -110,7 +110,10 @@ def verify_github_signature(
 # Webhook Payload Parsing
 # ============================================================================
 
-def parse_github_payload(payload_dict: Dict[str, Any]) -> Optional[GitHubWebhookPayload]:
+
+def parse_github_payload(
+    payload_dict: Dict[str, Any],
+) -> Optional[GitHubWebhookPayload]:
     """
     Parse GitHub webhook payload from JSON.
 
@@ -145,10 +148,7 @@ def parse_github_payload(payload_dict: Dict[str, Any]) -> Optional[GitHubWebhook
             head_sha=pr_dict["head"]["sha"],
             head_ref=pr_dict["head"]["ref"],
             base_ref=pr_dict["base"]["ref"],
-            user=GitHubUser(
-                login=pr_dict["user"]["login"],
-                id=pr_dict["user"]["id"]
-            ),
+            user=GitHubUser(login=pr_dict["user"]["login"], id=pr_dict["user"]["id"]),
             url=pr_dict["html_url"],
         )
 
@@ -163,10 +163,7 @@ def parse_github_payload(payload_dict: Dict[str, Any]) -> Optional[GitHubWebhook
 
         # Extract sender information
         sender_dict = payload_dict.get("sender", {})
-        sender = GitHubUser(
-            login=sender_dict["login"],
-            id=sender_dict["id"]
-        )
+        sender = GitHubUser(login=sender_dict["login"], id=sender_dict["id"])
 
         return GitHubWebhookPayload(
             action=action,
@@ -184,10 +181,8 @@ def parse_github_payload(payload_dict: Dict[str, Any]) -> Optional[GitHubWebhook
 # Webhook Event Handler
 # ============================================================================
 
-def handle_github_webhook(
-    payload: GitHubWebhookPayload,
-    db_session
-) -> Dict[str, Any]:
+
+def handle_github_webhook(payload: GitHubWebhookPayload, db_session) -> Dict[str, Any]:
     """
     Handle GitHub webhook event.
 
@@ -220,9 +215,7 @@ def handle_github_webhook(
     repo = payload.repository
 
     # Check if review already exists for this PR
-    existing_review = db_session.query(Review).filter(
-        Review.pr_id == pr.number
-    ).first()
+    existing_review = db_session.query(Review).filter(Review.pr_id == pr.number).first()
 
     if existing_review:
         # Update existing review for synchronize event

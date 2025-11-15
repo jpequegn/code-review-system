@@ -6,7 +6,6 @@ Handles authentication, comment formatting, and error handling.
 """
 
 import logging
-import re
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse
 
@@ -41,10 +40,16 @@ CATEGORY_EMOJI = {
 # Custom Exceptions
 # ============================================================================
 
+
 class GitHubAPIError(Exception):
     """Raised when GitHub API request fails."""
 
-    def __init__(self, message: str, status_code: Optional[int] = None, response: Optional[str] = None):
+    def __init__(
+        self,
+        message: str,
+        status_code: Optional[int] = None,
+        response: Optional[str] = None,
+    ):
         self.message = message
         self.status_code = status_code
         self.response = response
@@ -66,6 +71,7 @@ class RateLimitError(GitHubAPIError):
 # ============================================================================
 # Repository URL Parser
 # ============================================================================
+
 
 class RepositoryInfo:
     """Parsed GitHub repository information."""
@@ -137,6 +143,7 @@ def parse_repository_url(repo_url: str, pr_number: int) -> RepositoryInfo:
 # GitHub API Client
 # ============================================================================
 
+
 class GitHubAPIClient:
     """
     Client for GitHub API v3.
@@ -168,7 +175,7 @@ class GitHubAPIClient:
         method: str,
         endpoint: str,
         data: Optional[Dict[str, Any]] = None,
-        **kwargs
+        **kwargs,
     ) -> Dict[str, Any]:
         """
         Make authenticated HTTP request to GitHub API.
@@ -197,12 +204,7 @@ class GitHubAPIClient:
 
         try:
             response = requests.request(
-                method=method,
-                url=url,
-                json=data,
-                headers=headers,
-                timeout=10,
-                **kwargs
+                method=method, url=url, json=data, headers=headers, timeout=10, **kwargs
             )
 
             # Handle rate limiting
@@ -283,7 +285,9 @@ class GitHubAPIClient:
         comment_body = self._format_findings_comment(findings)
 
         # Post comment
-        endpoint = f"/repos/{repo_info.owner}/{repo_info.repo}/issues/{pr_number}/comments"
+        endpoint = (
+            f"/repos/{repo_info.owner}/{repo_info.repo}/issues/{pr_number}/comments"
+        )
 
         try:
             response = self._make_request(
@@ -324,7 +328,12 @@ class GitHubAPIClient:
         # Findings by severity
         severity_groups = self._group_findings_by_severity(findings)
 
-        for severity in [FindingSeverity.CRITICAL, FindingSeverity.HIGH, FindingSeverity.MEDIUM, FindingSeverity.LOW]:
+        for severity in [
+            FindingSeverity.CRITICAL,
+            FindingSeverity.HIGH,
+            FindingSeverity.MEDIUM,
+            FindingSeverity.LOW,
+        ]:
             if severity not in severity_groups:
                 continue
 
@@ -357,8 +366,12 @@ class GitHubAPIClient:
 
         # Title with category emoji
         category_emoji = CATEGORY_EMOJI.get(
-            finding.category.value if hasattr(finding.category, "value") else finding.category,
-            "•"
+            (
+                finding.category.value
+                if hasattr(finding.category, "value")
+                else finding.category
+            ),
+            "•",
         )
         lines.append(f"#### {category_emoji} {finding.title}")
         lines.append("")
@@ -390,7 +403,9 @@ class GitHubAPIClient:
 
         return "\n".join(lines)
 
-    def _group_findings_by_severity(self, findings: list[AnalyzedFinding]) -> Dict[FindingSeverity, list[AnalyzedFinding]]:
+    def _group_findings_by_severity(
+        self, findings: list[AnalyzedFinding]
+    ) -> Dict[FindingSeverity, list[AnalyzedFinding]]:
         """
         Group findings by severity.
 
