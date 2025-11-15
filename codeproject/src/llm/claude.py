@@ -5,9 +5,7 @@ Uses Anthropic SDK to interact with Claude models for code analysis.
 Supports streaming for long-running analyses.
 """
 
-import json
 import logging
-from typing import Optional
 
 from anthropic import Anthropic, APIError, APITimeoutError
 

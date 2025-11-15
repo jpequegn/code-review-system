@@ -24,17 +24,14 @@ class Settings(BaseSettings):
 
     llm_provider: Literal["claude", "ollama"] = Field(
         default="claude",
-        description="LLM provider to use for analysis (claude or ollama)"
+        description="LLM provider to use for analysis (claude or ollama)",
     )
 
-    claude_api_key: str = Field(
-        default="",
-        description="Anthropic Claude API key"
-    )
+    claude_api_key: str = Field(default="", description="Anthropic Claude API key")
 
     ollama_base_url: str = Field(
         default="http://localhost:11434",
-        description="Base URL for local Ollama instance"
+        description="Base URL for local Ollama instance",
     )
 
     # ============================================================================
@@ -42,18 +39,15 @@ class Settings(BaseSettings):
     # ============================================================================
 
     webhook_secret: str = Field(
-        default="",
-        description="Secret for verifying GitHub webhook signatures"
+        default="", description="Secret for verifying GitHub webhook signatures"
     )
 
     github_token: str = Field(
-        default="",
-        description="GitHub personal access token for posting comments"
+        default="", description="GitHub personal access token for posting comments"
     )
 
     gitlab_token: str = Field(
-        default="",
-        description="GitLab personal access token (for future support)"
+        default="", description="GitLab personal access token (for future support)"
     )
 
     # ============================================================================
@@ -62,22 +56,16 @@ class Settings(BaseSettings):
 
     database_url: str = Field(
         default="sqlite:///./codeproject.db",
-        description="Database connection URL (sqlite:// or postgresql://)"
+        description="Database connection URL (sqlite:// or postgresql://)",
     )
 
     # ============================================================================
     # Server Configuration
     # ============================================================================
 
-    host: str = Field(
-        default="0.0.0.0",
-        description="Server host to bind to"
-    )
+    host: str = Field(default="0.0.0.0", description="Server host to bind to")
 
-    port: int = Field(
-        default=8000,
-        description="Server port to listen on"
-    )
+    port: int = Field(default=8000, description="Server port to listen on")
 
     # ============================================================================
     # Logging Configuration
@@ -85,7 +73,7 @@ class Settings(BaseSettings):
 
     log_level: str = Field(
         default="INFO",
-        description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"
+        description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
     )
 
     # ============================================================================
@@ -104,7 +92,11 @@ class Settings(BaseSettings):
     @classmethod
     def validate_database_url(cls, v: str) -> str:
         """Validate that database URL uses supported schemes."""
-        if not (v.startswith("sqlite://") or v.startswith("postgresql://") or v.startswith("postgres://")):
+        if not (
+            v.startswith("sqlite://")
+            or v.startswith("postgresql://")
+            or v.startswith("postgres://")
+        ):
             raise ValueError(
                 "database_url must start with 'sqlite://', 'postgresql://', or 'postgres://'"
             )

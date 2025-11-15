@@ -113,9 +113,7 @@ class LLMProvider(ABC):
         for idx, finding in enumerate(data["findings"]):
             missing = required_fields - set(finding.keys())
             if missing:
-                raise ValueError(
-                    f"Finding {idx} missing required fields: {missing}"
-                )
+                raise ValueError(f"Finding {idx} missing required fields: {missing}")
 
             # Validate severity
             valid_severities = {"critical", "high", "medium", "low"}
@@ -156,6 +154,5 @@ def get_llm_provider() -> LLMProvider:
 
     else:
         raise ValueError(
-            f"Unknown LLM provider: {provider_name}. "
-            f"Must be 'claude' or 'ollama'"
+            f"Unknown LLM provider: {provider_name}. " f"Must be 'claude' or 'ollama'"
         )

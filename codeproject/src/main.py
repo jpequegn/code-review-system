@@ -6,7 +6,6 @@ Main entry point for the LLM-powered code review service.
 
 import logging
 from fastapi import FastAPI, Request, HTTPException, Depends, status
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from src.config import settings
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Code Security & Performance Reviewer",
     description="LLM-powered CI/CD code review analyzing security vulnerabilities and performance issues",
-    version="0.1.0"
+    version="0.1.0",
 )
 
 
@@ -75,7 +74,7 @@ async def github_webhook(
         logger.warning("Webhook missing X-Hub-Signature-256 header")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing webhook signature header"
+            detail="Missing webhook signature header",
         )
 
     # Verify webhook secret is configured
@@ -83,19 +82,14 @@ async def github_webhook(
         logger.error("WEBHOOK_SECRET not configured")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Webhook secret not configured"
+            detail="Webhook secret not configured",
         )
 
     # Verify signature
-    if not verify_github_signature(
-        body,
-        signature_header,
-        settings.webhook_secret
-    ):
+    if not verify_github_signature(body, signature_header, settings.webhook_secret):
         logger.warning(f"Invalid webhook signature: {signature_header[:20]}...")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid webhook signature"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook signature"
         )
 
     # Parse payload
@@ -104,8 +98,7 @@ async def github_webhook(
     except Exception as e:
         logger.error(f"Failed to parse webhook JSON: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON payload"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload"
         )
 
     # Parse GitHub payload
@@ -116,10 +109,7 @@ async def github_webhook(
             return {"ignored": True}
     except ValueError as e:
         logger.error(f"Failed to parse GitHub payload: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     # Handle webhook event
     try:
@@ -129,10 +119,11 @@ async def github_webhook(
         logger.error(f"Error handling webhook: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error processing webhook"
+            detail="Error processing webhook",
         )
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

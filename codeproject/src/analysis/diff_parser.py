@@ -19,30 +19,76 @@ logger = logging.getLogger(__name__)
 
 # Code file extensions to include
 CODE_EXTENSIONS = {
-    ".py", ".ts", ".tsx", ".js", ".jsx",  # Python, TypeScript, JavaScript
-    ".go", ".rs", ".java",  # Go, Rust, Java
-    ".cpp", ".c", ".cc", ".h", ".hpp",  # C/C++
-    ".rb", ".php", ".cs", ".kt", ".scala",  # Ruby, PHP, C#, Kotlin, Scala
-    ".swift", ".m", ".mm",  # Swift, Objective-C
-    ".r", ".sql",  # R, SQL
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",  # Python, TypeScript, JavaScript
+    ".go",
+    ".rs",
+    ".java",  # Go, Rust, Java
+    ".cpp",
+    ".c",
+    ".cc",
+    ".h",
+    ".hpp",  # C/C++
+    ".rb",
+    ".php",
+    ".cs",
+    ".kt",
+    ".scala",  # Ruby, PHP, C#, Kotlin, Scala
+    ".swift",
+    ".m",
+    ".mm",  # Swift, Objective-C
+    ".r",
+    ".sql",  # R, SQL
 }
 
 # Patterns to skip (paths/extensions)
 SKIP_PATTERNS = {
     # Test files
-    "test_", "tests/", "_test.", ".test.", ".spec.",
+    "test_",
+    "tests/",
+    "_test.",
+    ".test.",
+    ".spec.",
     # Documentation
-    ".md", ".txt", ".rst",
+    ".md",
+    ".txt",
+    ".rst",
     # Configuration and metadata
-    ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg",
-    ".xml", ".html", ".css", ".scss", ".sass", ".less",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".xml",
+    ".html",
+    ".css",
+    ".scss",
+    ".sass",
+    ".less",
     # Build and package files
-    "Dockerfile", "Makefile", ".lock", ".gradle", ".pom",
+    "Dockerfile",
+    "Makefile",
+    ".lock",
+    ".gradle",
+    ".pom",
     # Source control and git
-    ".git", ".gitignore",
+    ".git",
+    ".gitignore",
     # Compiled and binary files
-    ".pyc", ".o", ".so", ".a", ".lib", ".dll", ".exe",
-    ".class", ".jar", ".war",
+    ".pyc",
+    ".o",
+    ".so",
+    ".a",
+    ".lib",
+    ".dll",
+    ".exe",
+    ".class",
+    ".jar",
+    ".war",
 }
 
 
@@ -50,9 +96,11 @@ SKIP_PATTERNS = {
 # Data Models
 # ============================================================================
 
+
 @dataclass
 class CodeChange:
     """Represents a single code change (added/removed/modified line)."""
+
     file_path: str  # Path to the file
     line_number: int  # Line number in the new file
     old_line_number: Optional[int]  # Line number in old file (for context)
@@ -71,6 +119,7 @@ class CodeChange:
 @dataclass
 class FileDiff:
     """Represents all changes in a single file."""
+
     file_path: str  # Path to the file
     old_path: Optional[str]  # Path in old version (for renames)
     is_binary: bool  # Whether file is binary
@@ -94,6 +143,7 @@ class FileDiff:
 # ============================================================================
 # Diff Parser
 # ============================================================================
+
 
 class DiffParser:
     """
@@ -177,11 +227,7 @@ class DiffParser:
 
         return file_diffs
 
-    def _parse_file_diff(
-        self,
-        lines: List[str],
-        start_index: int
-    ) -> Dict:
+    def _parse_file_diff(self, lines: List[str], start_index: int) -> Dict:
         """
         Parse a single file's diff section.
 
@@ -250,10 +296,7 @@ class DiffParser:
         }
 
     def _parse_hunk(
-        self,
-        lines: List[str],
-        start_index: int,
-        file_diff: FileDiff
+        self, lines: List[str], start_index: int, file_diff: FileDiff
     ) -> int:
         """
         Parse a single hunk (@@...) section.
@@ -270,7 +313,7 @@ class DiffParser:
 
         # Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
         # Example: @@ -1,10 +1,12 @@
-        match = re.search(r'@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@', hunk_header)
+        match = re.search(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", hunk_header)
         if not match:
             logger.warning(f"Invalid hunk header: {hunk_header}")
             return start_index + 1
@@ -315,34 +358,40 @@ class DiffParser:
             if line.startswith("+"):
                 change_type = "add"
                 content = line[1:]
-                hunk_lines.append({
-                    "type": change_type,
-                    "new_line": new_line_num,
-                    "old_line": None,
-                    "content": content,
-                })
+                hunk_lines.append(
+                    {
+                        "type": change_type,
+                        "new_line": new_line_num,
+                        "old_line": None,
+                        "content": content,
+                    }
+                )
                 file_diff.additions += 1
                 new_line_num += 1
 
             elif line.startswith("-"):
                 change_type = "remove"
                 content = line[1:]
-                hunk_lines.append({
-                    "type": change_type,
-                    "new_line": None,
-                    "old_line": old_line_num,
-                    "content": content,
-                })
+                hunk_lines.append(
+                    {
+                        "type": change_type,
+                        "new_line": None,
+                        "old_line": old_line_num,
+                        "content": content,
+                    }
+                )
                 file_diff.deletions += 1
                 old_line_num += 1
 
             else:  # " " - context line
-                hunk_lines.append({
-                    "type": "context",
-                    "new_line": new_line_num,
-                    "old_line": old_line_num,
-                    "content": line[1:],
-                })
+                hunk_lines.append(
+                    {
+                        "type": "context",
+                        "new_line": new_line_num,
+                        "old_line": old_line_num,
+                        "content": line[1:],
+                    }
+                )
                 old_line_num += 1
                 new_line_num += 1
 
@@ -362,7 +411,9 @@ class DiffParser:
                         context_before.append(hunk_lines[j]["content"])
 
                 # Context after
-                for j in range(idx + 1, min(len(hunk_lines), idx + self.context_lines + 1)):
+                for j in range(
+                    idx + 1, min(len(hunk_lines), idx + self.context_lines + 1)
+                ):
                     if hunk_lines[j]["type"] == "context":
                         context_after.append(hunk_lines[j]["content"])
 
