@@ -9,9 +9,15 @@ from src.analysis.diff_parser import (
     CodeChange,
     FileDiff,
 )
+from src.analysis.analyzer import (
+    CodeAnalyzer,
+    AnalyzedFinding,
+)
 
 __all__ = [
     "DiffParser",
     "CodeChange",
     "FileDiff",
+    "CodeAnalyzer",
+    "AnalyzedFinding",
 ]
