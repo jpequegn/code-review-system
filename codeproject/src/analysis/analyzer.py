@@ -2,8 +2,9 @@
 Code Analysis Orchestration
 
 Coordinates security and performance analysis of code changes.
-Parses LLM responses, deduplicates findings, and assigns severity levels.
-Integrates metrics collection for code complexity analysis.
+Integrates LLM analysis with multi-tool static analysis (pylint, bandit, mypy, coverage).
+Parses responses, deduplicates findings, and assigns confidence scores.
+Collects and persists code metrics (complexity, maintainability, etc.).
 """
 
 import logging
@@ -15,6 +16,8 @@ from sqlalchemy.orm import Session
 from src.llm.provider import LLMProvider, get_llm_provider
 from src.analysis.diff_parser import FileDiff
 from src.database import FindingCategory, FindingSeverity, CodeMetrics, Review
+from src.tools.runner import ToolRunner, ToolExecutionError, ToolParsingError
+from src.tools.unifier import FindingsUnifier, UnifiedFinding
 from src.metrics.collector import PythonMetricsCollector, MetricsCollectorError
 
 logger = logging.getLogger(__name__)
@@ -94,10 +97,11 @@ class CodeAnalyzer:
     Orchestrates security and performance analysis of code changes.
 
     Responsibilities:
-    - Route code to security and performance analyzers
-    - Parse LLM responses into Finding objects
-    - Deduplicate overlapping findings
-    - Assign confidence scores based on LLM response quality
+    - Run static analysis tools (pylint, bandit, mypy, coverage)
+    - Route code to LLM analyzers for semantic analysis
+    - Deduplicate overlapping findings across tools
+    - Unify findings with confidence scores
+    - Assign severity based on multi-signal analysis
     - Collect and persist code metrics (complexity, maintainability, etc.)
     - Track analysis metadata (analyzer used, timestamps, etc.)
     """
@@ -105,6 +109,8 @@ class CodeAnalyzer:
     def __init__(
         self,
         llm_provider: Optional[LLMProvider] = None,
+        tool_runner: Optional[ToolRunner] = None,
+        use_tools: bool = True,
         metrics_collector: Optional[PythonMetricsCollector] = None,
     ):
         """
@@ -112,9 +118,14 @@ class CodeAnalyzer:
 
         Args:
             llm_provider: LLM provider instance (uses default if not provided)
+            tool_runner: Tool runner instance (creates new if not provided)
+            use_tools: Whether to run static analysis tools (default: True)
             metrics_collector: Metrics collector (uses default if not provided)
         """
         self.llm_provider = llm_provider or get_llm_provider()
+        self.tool_runner = tool_runner if tool_runner is not None else ToolRunner()
+        self.unifier = FindingsUnifier()
+        self.use_tools = use_tools
         self.metrics_collector = metrics_collector or PythonMetricsCollector()
 
     def analyze_code_changes(
@@ -124,7 +135,13 @@ class CodeAnalyzer:
         review_id: Optional[int] = None,
     ) -> List[AnalyzedFinding]:
         """
-        Analyze code changes for security and performance issues.
+        Analyze code changes using tools and LLM.
+
+        Pipeline:
+        1. Run static analysis tools (pylint, bandit, mypy)
+        2. Run LLM analysis (security, performance)
+        3. Unify findings and deduplicate
+        4. Sort by severity and confidence
 
         Args:
             file_diffs: List of FileDiff objects from DiffParser
@@ -140,22 +157,123 @@ class CodeAnalyzer:
         # Convert file diffs to code snippet for analysis
         code_snippet = self._diffs_to_code_snippet(file_diffs)
 
-        # Analyze for security issues
+        # Step 1: Run static analysis tools
+        tool_findings: Dict[str, List[Dict[str, Any]]] = {}
+        if self.use_tools:
+            tool_findings = self._run_static_analysis_tools(code_snippet, file_diffs)
+
+        # Step 2: Run LLM analysis
         security_findings = self._analyze_security(code_snippet)
-
-        # Analyze for performance issues
         performance_findings = self._analyze_performance(code_snippet)
+        llm_findings = security_findings + performance_findings
 
-        # Combine and deduplicate
-        all_findings = security_findings + performance_findings
-        deduplicated = self._deduplicate_findings(all_findings)
+        # Step 2b: Deduplicate LLM findings (same issue from both analyzers)
+        llm_findings = self._deduplicate_findings(llm_findings)
 
-        # Collect and persist metrics if database session provided
+        # Step 3: Convert AnalyzedFinding objects to dicts for unifier
+        llm_findings_dicts = [self._analyzed_to_dict(f) for f in llm_findings]
+
+        # Step 4: Unify tool and LLM findings
+        unified_findings = self.unifier.unify_findings(tool_findings, llm_findings_dicts)
+        unified_findings = self.unifier.sort_by_severity_and_confidence(unified_findings)
+
+        # Step 5: Convert to AnalyzedFinding format for consistency
+        analyzed = [self._unified_to_analyzed(f) for f in unified_findings]
+
+        # Step 6: Collect and persist metrics if database session provided
         if db and review_id:
             self._collect_and_persist_metrics(file_diffs, db, review_id)
 
-        # Sort by severity (critical first)
-        return self._sort_by_severity(deduplicated)
+        return analyzed
+
+    def _run_static_analysis_tools(
+        self,
+        code_snippet: str,
+        file_diffs: List[FileDiff],
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Run static analysis tools on code snippet.
+
+        Args:
+            code_snippet: Code to analyze
+            file_diffs: File diffs for context
+
+        Returns:
+            Dictionary mapping tool name to findings
+        """
+        try:
+            # Get primary file path from diffs
+            file_path = file_diffs[0].file_path if file_diffs else "unknown"
+
+            # Run tools
+            return self.tool_runner.run_all_tools(code_snippet, file_path)
+
+        except (ToolExecutionError, ToolParsingError) as e:
+            logger.warning(f"Tool execution failed: {e}")
+            return {}
+        except Exception as e:
+            logger.error(f"Unexpected error running tools: {e}")
+            return {}
+
+    def _analyzed_to_dict(self, finding: AnalyzedFinding) -> Dict[str, Any]:
+        """
+        Convert AnalyzedFinding to dict for unifier.
+
+        Args:
+            finding: AnalyzedFinding instance
+
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "category": finding.category.value,
+            "severity": finding.severity.value,
+            "title": finding.title,
+            "description": finding.description,
+            "file_path": finding.file_path,
+            "line_number": finding.line_number,
+            "suggested_fix": finding.suggested_fix,
+            "confidence": finding.confidence,
+        }
+
+    def _unified_to_analyzed(self, unified: UnifiedFinding) -> AnalyzedFinding:
+        """
+        Convert UnifiedFinding to AnalyzedFinding for backward compatibility.
+
+        Args:
+            unified: UnifiedFinding instance
+
+        Returns:
+            AnalyzedFinding instance
+        """
+        # Map category string to FindingCategory enum
+        category_map = {
+            "security": FindingCategory.SECURITY,
+            "performance": FindingCategory.PERFORMANCE,
+            "quality": FindingCategory.BEST_PRACTICE,
+            "testing": FindingCategory.BEST_PRACTICE,
+        }
+        category = category_map.get(unified.category, FindingCategory.BEST_PRACTICE)
+
+        # Map severity string to FindingSeverity enum
+        severity_map = {
+            "critical": FindingSeverity.CRITICAL,
+            "high": FindingSeverity.HIGH,
+            "medium": FindingSeverity.MEDIUM,
+            "low": FindingSeverity.LOW,
+        }
+        severity = severity_map.get(unified.severity, FindingSeverity.MEDIUM)
+
+        return AnalyzedFinding(
+            category=category,
+            severity=severity,
+            title=unified.title,
+            description=unified.description,
+            file_path=unified.file_path,
+            line_number=unified.line_number,
+            suggested_fix=unified.suggested_fix,
+            confidence=unified.combined_confidence,
+        )
 
     def _collect_and_persist_metrics(
         self,
