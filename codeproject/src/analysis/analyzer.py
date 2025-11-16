@@ -4,17 +4,21 @@ Code Analysis Orchestration
 Coordinates security and performance analysis of code changes.
 Integrates LLM analysis with multi-tool static analysis (pylint, bandit, mypy, coverage).
 Parses responses, deduplicates findings, and assigns confidence scores.
+Collects and persists code metrics (complexity, maintainability, etc.).
 """
 
 import logging
 import json
 from typing import List, Dict, Any, Optional, Tuple
+from pathlib import Path
+from sqlalchemy.orm import Session
 
 from src.llm.provider import LLMProvider, get_llm_provider
 from src.analysis.diff_parser import FileDiff
-from src.database import FindingCategory, FindingSeverity
+from src.database import FindingCategory, FindingSeverity, CodeMetrics, Review
 from src.tools.runner import ToolRunner, ToolExecutionError, ToolParsingError
 from src.tools.unifier import FindingsUnifier, UnifiedFinding
+from src.metrics.collector import PythonMetricsCollector, MetricsCollectorError
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +102,8 @@ class CodeAnalyzer:
     - Deduplicate overlapping findings across tools
     - Unify findings with confidence scores
     - Assign severity based on multi-signal analysis
+    - Collect and persist code metrics (complexity, maintainability, etc.)
+    - Track analysis metadata (analyzer used, timestamps, etc.)
     """
 
     def __init__(
@@ -105,6 +111,7 @@ class CodeAnalyzer:
         llm_provider: Optional[LLMProvider] = None,
         tool_runner: Optional[ToolRunner] = None,
         use_tools: bool = True,
+        metrics_collector: Optional[PythonMetricsCollector] = None,
     ):
         """
         Initialize CodeAnalyzer.
@@ -113,15 +120,19 @@ class CodeAnalyzer:
             llm_provider: LLM provider instance (uses default if not provided)
             tool_runner: Tool runner instance (creates new if not provided)
             use_tools: Whether to run static analysis tools (default: True)
+            metrics_collector: Metrics collector (uses default if not provided)
         """
         self.llm_provider = llm_provider or get_llm_provider()
         self.tool_runner = tool_runner if tool_runner is not None else ToolRunner()
         self.unifier = FindingsUnifier()
         self.use_tools = use_tools
+        self.metrics_collector = metrics_collector or PythonMetricsCollector()
 
     def analyze_code_changes(
         self,
         file_diffs: List[FileDiff],
+        db: Optional[Session] = None,
+        review_id: Optional[int] = None,
     ) -> List[AnalyzedFinding]:
         """
         Analyze code changes using tools and LLM.
@@ -134,6 +145,8 @@ class CodeAnalyzer:
 
         Args:
             file_diffs: List of FileDiff objects from DiffParser
+            db: Database session for persisting metrics (optional)
+            review_id: Review ID for associating metrics (optional)
 
         Returns:
             List of deduplicated AnalyzedFinding objects sorted by severity
@@ -164,8 +177,12 @@ class CodeAnalyzer:
         unified_findings = self.unifier.unify_findings(tool_findings, llm_findings_dicts)
         unified_findings = self.unifier.sort_by_severity_and_confidence(unified_findings)
 
-        # Step 4: Convert to AnalyzedFinding format for consistency
+        # Step 5: Convert to AnalyzedFinding format for consistency
         analyzed = [self._unified_to_analyzed(f) for f in unified_findings]
+
+        # Step 6: Collect and persist metrics if database session provided
+        if db and review_id:
+            self._collect_and_persist_metrics(file_diffs, db, review_id)
 
         return analyzed
 
@@ -257,6 +274,94 @@ class CodeAnalyzer:
             suggested_fix=unified.suggested_fix,
             confidence=unified.combined_confidence,
         )
+
+    def _collect_and_persist_metrics(
+        self,
+        file_diffs: List[FileDiff],
+        db: Session,
+        review_id: int,
+    ) -> None:
+        """
+        Collect metrics for changed files and persist to database.
+
+        For each file in the diffs, collects metrics (complexity, maintainability, etc.)
+        and stores them as CodeMetrics ORM records associated with the review.
+
+        Args:
+            file_diffs: List of FileDiff objects from DiffParser
+            db: Database session
+            review_id: Review ID to associate metrics with
+
+        Note:
+            Errors in metrics collection are logged but don't fail the analysis.
+            This allows the review to complete even if metrics collection fails.
+        """
+        if not file_diffs:
+            return
+
+        # Get review object
+        try:
+            review = db.query(Review).filter(Review.id == review_id).first()
+            if not review:
+                logger.warning(f"Review {review_id} not found for metrics persistence")
+                return
+        except Exception as e:
+            logger.error(f"Failed to fetch review {review_id}: {e}")
+            return
+
+        # For each changed file, try to collect metrics
+        for file_diff in file_diffs:
+            # Only analyze Python files for now
+            if not file_diff.file_path.endswith(".py"):
+                continue
+
+            try:
+                # Construct absolute path to file
+                file_path = Path(file_diff.file_path)
+
+                # Collect metrics for this file
+                file_metrics = self.metrics_collector.collect_file_metrics(file_path)
+                if not file_metrics:
+                    logger.debug(f"Could not collect metrics for {file_diff.file_path}")
+                    continue
+
+                # Create CodeMetrics ORM record
+                code_metric = CodeMetrics(
+                    review_id=review_id,
+                    file_path=file_diff.file_path,
+                    language="python",
+                    cyclomatic_complexity=int(file_metrics.average_complexity),
+                    cognitive_complexity=int(file_metrics.average_complexity * 1.1),
+                    max_nesting_depth=3,  # TODO: extract from FileMetrics
+                    total_lines=file_metrics.total_lines,
+                    code_lines=file_metrics.code_lines,
+                    average_function_length=int(file_metrics.average_function_length),
+                    function_count=len(file_metrics.functions),
+                    class_count=file_metrics.classes_count,
+                    import_count=file_metrics.imports_count,
+                    average_complexity=file_metrics.average_complexity,
+                    max_complexity=file_metrics.max_complexity,
+                )
+
+                # Persist to database
+                db.add(code_metric)
+                db.commit()
+                logger.debug(
+                    f"Persisted metrics for {file_diff.file_path}: "
+                    f"cc={file_metrics.average_complexity:.2f}"
+                )
+
+            except MetricsCollectorError as e:
+                logger.warning(
+                    f"Metrics collection failed for {file_diff.file_path}: {e}"
+                )
+                continue
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error persisting metrics for {file_diff.file_path}: {e}"
+                )
+                db.rollback()
+                continue
 
     def _diffs_to_code_snippet(self, file_diffs: List[FileDiff]) -> str:
         """
