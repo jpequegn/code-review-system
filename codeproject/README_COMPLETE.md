@@ -66,7 +66,7 @@ Complete System (Phase 4+)
 ✅ Security vulnerability detection
 ✅ Performance issue detection
 ✅ SQLite audit trail
-✅ Claude & Ollama LLM support
+✅ Multi-provider LLM support (Claude, Ollama, OpenRouter)
 
 ### Phase 2a: Metrics
 ✅ Code complexity analysis
@@ -146,19 +146,64 @@ cp .env.example .env
 ### Environment Configuration
 
 ```bash
-# .env file
-LLM_PROVIDER=claude              # or 'ollama' for local
-CLAUDE_API_KEY=sk-...            # Your Claude API key
-OLLAMA_BASE_URL=http://localhost:11434
+# .env file - Choose one LLM provider:
 
+# Option 1: Anthropic Claude (Default - Recommended)
+LLM_PROVIDER=claude
+CLAUDE_API_KEY=sk-...                    # Get from https://console.anthropic.com
+
+# Option 2: Local Ollama
+# LLM_PROVIDER=ollama
+# OLLAMA_BASE_URL=http://localhost:11434
+
+# Option 3: OpenRouter (Multi-model, Cost-optimized)
+# LLM_PROVIDER=openrouter
+# OPENROUTER_API_KEY=sk-or-v1-...       # Get from https://openrouter.ai
+# OPENROUTER_MODEL=anthropic/claude-3.5-sonnet  # Optional, defaults to claude-3.5-sonnet
+
+# GitHub & Webhook
 GITHUB_TOKEN=ghp_...             # For posting PR comments
 WEBHOOK_SECRET=your-secret       # For webhook verification
 
+# Server
 HOST=0.0.0.0
 PORT=8000
 LOG_LEVEL=INFO
 DATABASE_URL=sqlite:///./codeproject.db
 ```
+
+### OpenRouter - Multi-Model LLM Provider
+
+**OpenRouter** provides access to 100+ LLM models through a unified API. Switch between models, compare costs, and optimize for your use case:
+
+**Supported Models:**
+- **claude-3.5-sonnet** (Default) - Balanced, fast, recommended
+- **claude-3-opus** - Most capable, higher cost
+- **gpt-4** - Alternative high-performance model
+- **gpt-4-turbo** - Faster, cheaper than GPT-4
+- **mixtral** - Cost-effective, open source
+- **llama-2** - Community-maintained model
+- ... 100+ more models available
+
+**Quick Start with OpenRouter:**
+```bash
+# Get API key from https://openrouter.ai
+export LLM_PROVIDER=openrouter
+export OPENROUTER_API_KEY=sk-or-v1-your-key
+
+# Use default model (claude-3.5-sonnet)
+python -m src.main
+
+# Or specify a different model
+export OPENROUTER_MODEL=openai/gpt-4
+python -m src.main
+```
+
+**Benefits:**
+- Compare prices across 100+ models
+- Switch models in configuration (no code changes)
+- Automatic failover between providers
+- OpenAI-compatible API format
 
 ## 📖 Usage Examples
 
@@ -549,6 +594,12 @@ pytest tests/ --cov=src --cov-report=html
 - `src/database.py` - SQLite ORM models
 - `src/webhooks/github.py` - GitHub webhook handling
 - `src/integrations/github_api.py` - GitHub API interactions
+
+### LLM Providers (Multi-Provider Support)
+- `src/llm/provider.py` - Abstract provider interface & factory
+- `src/llm/claude.py` - Anthropic Claude implementation
+- `src/llm/ollama.py` - Local Ollama implementation
+- `src/llm/openrouter.py` - OpenRouter multi-model implementation (100+ models)
 
 ### Phase 2a: Metrics
 - `src/metrics/collector.py` - Code metrics extraction
