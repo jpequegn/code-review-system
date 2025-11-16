@@ -81,6 +81,44 @@ class LLMProvider(ABC):
         """
         pass
 
+    def analyze_security_with_context(
+        self, code_diff: str, context_prompt: str
+    ) -> str:
+        """
+        Analyze code for security vulnerabilities with codebase context.
+
+        Args:
+            code_diff: Git diff or code snippet to analyze
+            context_prompt: Additional context about the codebase
+
+        Returns:
+            JSON string with security findings
+
+        Note:
+            Default implementation calls analyze_security.
+            Subclasses can override for context-aware implementations.
+        """
+        return self.analyze_security(code_diff)
+
+    def analyze_performance_with_context(
+        self, code_diff: str, context_prompt: str
+    ) -> str:
+        """
+        Analyze code for performance issues with codebase context.
+
+        Args:
+            code_diff: Git diff or code snippet to analyze
+            context_prompt: Additional context about the codebase
+
+        Returns:
+            JSON string with performance findings
+
+        Note:
+            Default implementation calls analyze_performance.
+            Subclasses can override for context-aware implementations.
+        """
+        return self.analyze_performance(code_diff)
+
     @staticmethod
     def validate_response(response: str) -> Dict[str, Any]:
         """

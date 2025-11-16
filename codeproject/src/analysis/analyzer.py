@@ -14,7 +14,10 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from src.llm.provider import LLMProvider, get_llm_provider
+from src.llm import enhanced_prompts
 from src.analysis.diff_parser import FileDiff
+from src.analysis.context_builder import ContextBuilder
+from src.analysis.context_models import CodebaseContext
 from src.database import FindingCategory, FindingSeverity, CodeMetrics, Review
 from src.tools.runner import ToolRunner, ToolExecutionError, ToolParsingError
 from src.tools.unifier import FindingsUnifier, UnifiedFinding
@@ -112,6 +115,8 @@ class CodeAnalyzer:
         tool_runner: Optional[ToolRunner] = None,
         use_tools: bool = True,
         metrics_collector: Optional[PythonMetricsCollector] = None,
+        repo_path: Optional[str] = None,
+        use_context: bool = True,
     ):
         """
         Initialize CodeAnalyzer.
@@ -121,12 +126,46 @@ class CodeAnalyzer:
             tool_runner: Tool runner instance (creates new if not provided)
             use_tools: Whether to run static analysis tools (default: True)
             metrics_collector: Metrics collector (uses default if not provided)
+            repo_path: Path to repository for context building (optional)
+            use_context: Whether to use context-enhanced LLM analysis (default: True)
         """
         self.llm_provider = llm_provider or get_llm_provider()
         self.tool_runner = tool_runner if tool_runner is not None else ToolRunner()
         self.unifier = FindingsUnifier()
         self.use_tools = use_tools
         self.metrics_collector = metrics_collector or PythonMetricsCollector()
+        self.use_context = use_context
+        self.context_builder = ContextBuilder(repo_path) if repo_path and use_context else None
+        self.cached_context: Optional[CodebaseContext] = None
+
+    def _get_or_build_context(self) -> Optional[CodebaseContext]:
+        """
+        Get or build codebase context (cached).
+
+        Returns:
+            CodebaseContext if available, None otherwise
+        """
+        if not self.context_builder:
+            return None
+
+        if self.cached_context:
+            return self.cached_context
+
+        try:
+            self.cached_context = self.context_builder.build_context()
+            return self.cached_context
+        except Exception as e:
+            logger.warning(f"Failed to build codebase context: {e}")
+            return None
+
+    def _get_cross_file_analysis(
+        self, file_diffs: List[FileDiff], context: CodebaseContext
+    ):
+        """Get cross-file analysis for changed files."""
+        changed_files = [diff.file_path for diff in file_diffs]
+        return context.build_cross_file_analysis(changed_files) if hasattr(
+            context, "build_cross_file_analysis"
+        ) else self.context_builder.get_cross_file_analysis(changed_files, context)
 
     def analyze_code_changes(
         self,
