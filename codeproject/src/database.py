@@ -193,6 +193,126 @@ class Finding(Base):
         return f"<Finding(id={self.id}, review_id={self.review_id}, severity={self.severity})>"
 
 
+class CodeMetrics(Base):
+    """
+    Represents code metrics for a specific file at a point in time.
+
+    Stores quantitative metrics like complexity, coupling, and maintainability.
+    """
+
+    __tablename__ = "code_metrics"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Foreign key to review
+    review_id = Column(
+        Integer,
+        ForeignKey("reviews.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # File path being analyzed
+    file_path = Column(String(512), nullable=False, index=True)
+
+    # Programming language
+    language = Column(String(50), nullable=False)
+
+    # Complexity metrics
+    cyclomatic_complexity = Column(Integer, nullable=False)
+    cognitive_complexity = Column(Integer, nullable=False)
+    max_nesting_depth = Column(Integer, nullable=False)
+
+    # Size metrics
+    total_lines = Column(Integer, nullable=False)
+    code_lines = Column(Integer, nullable=False)
+    average_function_length = Column(Integer, nullable=False)
+
+    # Structure metrics
+    function_count = Column(Integer, nullable=False)
+    class_count = Column(Integer, nullable=False)
+    import_count = Column(Integer, nullable=False)
+
+    # Quality metrics
+    average_complexity = Column(Integer, nullable=False)
+    max_complexity = Column(Integer, nullable=False)
+
+    # Timestamp
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<CodeMetrics(file={self.file_path}, cc={self.cyclomatic_complexity})>"
+
+
+class MetricsHistory(Base):
+    """
+    Tracks metrics history for trend analysis.
+
+    Records metrics snapshots at specific points in time (per commit/review).
+    """
+
+    __tablename__ = "metrics_history"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Git commit SHA
+    commit_sha = Column(String(40), nullable=False, index=True, unique=True)
+
+    # Repository URL
+    repo_url = Column(String(512), nullable=False, index=True)
+
+    # Snapshot metrics
+    total_lines = Column(Integer, nullable=False)
+    average_complexity = Column(Integer, nullable=False)
+    max_complexity = Column(Integer, nullable=False)
+    high_complexity_file_count = Column(Integer, nullable=False)
+
+    # Timestamp
+    timestamp = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<MetricsHistory(sha={self.commit_sha[:8]}, avg_cc={self.average_complexity})>"
+
+
+class MetricsBaseline(Base):
+    """
+    Stores baseline metrics for a project for comparison.
+
+    Used to identify when metrics deviate from project norms.
+    """
+
+    __tablename__ = "metrics_baseline"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Repository URL (unique per project)
+    repo_url = Column(String(512), nullable=False, index=True, unique=True)
+
+    # Baseline metrics (calculated from project history)
+    average_complexity = Column(Integer, nullable=False)
+    median_complexity = Column(Integer, nullable=False)
+    p95_complexity = Column(Integer, nullable=False)
+
+    # File metrics
+    average_file_size = Column(Integer, nullable=False)
+    average_function_length = Column(Integer, nullable=False)
+
+    # Last updated timestamp
+    updated_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<MetricsBaseline(repo={self.repo_url}, avg_cc={self.average_complexity})>"
+
+
 # ============================================================================
 # Database Initialization
 # ============================================================================
