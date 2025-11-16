@@ -168,10 +168,10 @@ def get_llm_provider() -> LLMProvider:
     Factory function to create LLM provider based on configuration.
 
     Returns:
-        Configured LLM provider instance (ClaudeProvider or OllamaProvider)
+        Configured LLM provider instance (ClaudeProvider, OllamaProvider, or OpenRouterProvider)
 
     Raises:
-        ValueError: If configured provider is not supported
+        ValueError: If configured provider is not supported or required config is missing
     """
     provider_name = settings.llm_provider.lower()
 
@@ -190,7 +190,21 @@ def get_llm_provider() -> LLMProvider:
 
         return OllamaProvider(base_url=settings.ollama_base_url)
 
+    elif provider_name == "openrouter":
+        from src.llm.openrouter import OpenRouterProvider
+
+        if not settings.openrouter_api_key:
+            raise ValueError(
+                "OpenRouter provider selected but OPENROUTER_API_KEY not configured"
+            )
+
+        return OpenRouterProvider(
+            api_key=settings.openrouter_api_key,
+            model=settings.openrouter_model,
+        )
+
     else:
         raise ValueError(
-            f"Unknown LLM provider: {provider_name}. " f"Must be 'claude' or 'ollama'"
+            f"Unknown LLM provider: {provider_name}. "
+            f"Must be 'claude', 'ollama', or 'openrouter'"
         )

@@ -22,9 +22,9 @@ class Settings(BaseSettings):
     # LLM Configuration
     # ============================================================================
 
-    llm_provider: Literal["claude", "ollama"] = Field(
+    llm_provider: Literal["claude", "ollama", "openrouter"] = Field(
         default="claude",
-        description="LLM provider to use for analysis (claude or ollama)",
+        description="LLM provider to use for analysis (claude, ollama, or openrouter)",
     )
 
     claude_api_key: str = Field(default="", description="Anthropic Claude API key")
@@ -32,6 +32,15 @@ class Settings(BaseSettings):
     ollama_base_url: str = Field(
         default="http://localhost:11434",
         description="Base URL for local Ollama instance",
+    )
+
+    openrouter_api_key: str = Field(
+        default="", description="OpenRouter API key (get from https://openrouter.ai)"
+    )
+
+    openrouter_model: str = Field(
+        default="anthropic/claude-3.5-sonnet",
+        description="OpenRouter model to use (e.g., anthropic/claude-3.5-sonnet, openai/gpt-4)",
     )
 
     # ============================================================================
@@ -83,9 +92,9 @@ class Settings(BaseSettings):
     @field_validator("llm_provider")
     @classmethod
     def validate_llm_provider(cls, v: str) -> str:
-        """Validate that LLM provider is either 'claude' or 'ollama'."""
-        if v not in ["claude", "ollama"]:
-            raise ValueError("llm_provider must be 'claude' or 'ollama'")
+        """Validate that LLM provider is one of the supported providers."""
+        if v not in ["claude", "ollama", "openrouter"]:
+            raise ValueError("llm_provider must be 'claude', 'ollama', or 'openrouter'")
         return v
 
     @field_validator("database_url")
