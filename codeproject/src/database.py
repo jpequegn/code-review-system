@@ -21,6 +21,8 @@ from sqlalchemy import (
     ForeignKey,
     Enum as SQLEnum,
     event,
+    Float,
+    Boolean,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 
@@ -88,6 +90,26 @@ class FindingCategory(str, Enum):
     SECURITY = "security"  # Security vulnerability
     PERFORMANCE = "performance"  # Performance/scalability issue
     BEST_PRACTICE = "best_practice"  # Code quality/best practice
+
+
+class FeedbackType(str, Enum):
+    """Type of feedback on a finding."""
+
+    HELPFUL = "helpful"  # Finding was useful and accurate
+    FALSE_POSITIVE = "false_positive"  # Not relevant or incorrect
+    MISSED = "missed"  # We should have caught this
+    RESOLVED = "resolved"  # Issue was fixed
+    RECURRING = "recurring"  # This issue keeps happening
+
+
+class IssueValidation(str, Enum):
+    """Validation outcome of a finding."""
+
+    UNVALIDATED = "unvalidated"  # No validation yet
+    CONFIRMED = "confirmed"  # User confirmed the issue exists
+    PARTIALLY_VALID = "partially_valid"  # Some aspects are valid
+    FALSE = "false"  # Issue doesn't actually exist
+    FIXED = "fixed"  # Issue was fixed
 
 
 # ============================================================================
@@ -311,6 +333,144 @@ class MetricsBaseline(Base):
 
     def __repr__(self) -> str:
         return f"<MetricsBaseline(repo={self.repo_url}, avg_cc={self.average_complexity})>"
+
+
+class FindingFeedback(Base):
+    """
+    Represents user feedback on a finding.
+
+    Tracks whether findings were helpful, false positives, etc.
+    This data is used to learn and adapt severity over time.
+    """
+
+    __tablename__ = "finding_feedback"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Foreign key to finding
+    finding_id = Column(
+        Integer,
+        ForeignKey("findings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Type of feedback
+    feedback_type = Column(
+        SQLEnum(FeedbackType), nullable=False, index=True
+    )
+
+    # Validation status of the finding
+    validation = Column(
+        SQLEnum(IssueValidation), default=IssueValidation.UNVALIDATED, nullable=False, index=True
+    )
+
+    # Optional notes from user
+    user_notes = Column(Text, nullable=True)
+
+    # Severity adjustment suggested by feedback (-2 to +2)
+    severity_adjustment = Column(Integer, default=0, nullable=False)
+
+    # Was this finding helpful? (boolean)
+    helpful = Column(Boolean, default=None, nullable=True)
+
+    # Timestamp
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<FindingFeedback(finding={self.finding_id}, type={self.feedback_type})>"
+
+
+class ProductionIssue(Base):
+    """
+    Represents a bug that occurred in production.
+
+    Links production issues back to findings that could have caught them.
+    Used to measure false negative rate and learn patterns.
+    """
+
+    __tablename__ = "production_issues"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Repository URL
+    repo_url = Column(String(512), nullable=False, index=True)
+
+    # Description of the bug
+    description = Column(Text, nullable=False)
+
+    # Date the bug was discovered
+    date_discovered = Column(DateTime, nullable=False, index=True)
+
+    # Severity of the bug
+    severity = Column(SQLEnum(FindingSeverity), nullable=False, index=True)
+
+    # Time to fix in minutes (optional)
+    time_to_fix_minutes = Column(Integer, nullable=True)
+
+    # File affected (if known)
+    file_path = Column(String(512), nullable=True, index=True)
+
+    # Related findings IDs (JSON list as string)
+    related_finding_ids = Column(String(512), nullable=True)
+
+    # Timestamp when reported
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<ProductionIssue(severity={self.severity}, date={self.date_discovered.date()})>"
+
+
+class LearningMetrics(Base):
+    """
+    Stores learning metrics tracking system accuracy over time.
+
+    Metrics like precision, recall, false positive rate per category.
+    Used to adapt analysis and learn personal thresholds.
+    """
+
+    __tablename__ = "learning_metrics"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Repository URL (for per-project metrics)
+    repo_url = Column(String(512), nullable=False, index=True)
+
+    # Category of findings (SECURITY, PERFORMANCE, BEST_PRACTICE)
+    category = Column(SQLEnum(FindingCategory), nullable=False, index=True)
+
+    # Severity level
+    severity = Column(SQLEnum(FindingSeverity), nullable=False, index=True)
+
+    # Accuracy metrics
+    total_findings = Column(Integer, default=0, nullable=False)
+    confirmed_findings = Column(Integer, default=0, nullable=False)
+    false_positives = Column(Integer, default=0, nullable=False)
+    false_negatives = Column(Integer, default=0, nullable=False)
+
+    # Calculated metrics (as percentages: 0-100)
+    accuracy = Column(Float, default=0.0, nullable=False)
+    precision = Column(Float, default=0.0, nullable=False)
+    recall = Column(Float, default=0.0, nullable=False)
+    false_positive_rate = Column(Float, default=0.0, nullable=False)
+
+    # Personal threshold for this category/severity
+    confidence_threshold = Column(Float, default=0.5, nullable=False)
+
+    # Last updated timestamp
+    updated_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<LearningMetrics({self.category}/{self.severity}, accuracy={self.accuracy:.1f}%)>"
 
 
 # ============================================================================
