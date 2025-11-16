@@ -149,6 +149,44 @@ class ClaudeProvider(LLMProvider):
         prompt = PERFORMANCE_ANALYSIS_PROMPT.format(code_diff=code_diff)
         return self._call_claude(prompt)
 
+    def analyze_security_with_context(
+        self, code_diff: str, context_prompt: str
+    ) -> str:
+        """
+        Analyze code for security vulnerabilities with codebase context.
+
+        Args:
+            code_diff: Git diff or code snippet to analyze
+            context_prompt: Additional context about the codebase
+
+        Returns:
+            JSON string with security findings
+        """
+        from src.llm.enhanced_prompts import enhance_security_prompt
+
+        # Build enhanced prompt with context
+        enhanced = enhance_security_prompt(code_diff, context_prompt=context_prompt)
+        return self._call_claude(enhanced)
+
+    def analyze_performance_with_context(
+        self, code_diff: str, context_prompt: str
+    ) -> str:
+        """
+        Analyze code for performance issues with codebase context.
+
+        Args:
+            code_diff: Git diff or code snippet to analyze
+            context_prompt: Additional context about the codebase
+
+        Returns:
+            JSON string with performance findings
+        """
+        from src.llm.enhanced_prompts import enhance_performance_prompt
+
+        # Build enhanced prompt with context
+        enhanced = enhance_performance_prompt(code_diff, context_prompt=context_prompt)
+        return self._call_claude(enhanced)
+
     def _call_claude(self, prompt: str) -> str:
         """
         Make a request to Claude API.
