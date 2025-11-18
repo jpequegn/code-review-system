@@ -5,7 +5,9 @@ Connects to local Ollama instance for running open-source models locally.
 Useful for development and testing without API costs.
 """
 
+import json
 import logging
+from typing import Any, Dict
 
 import requests
 from requests.exceptions import RequestException, Timeout, ConnectionError
@@ -173,6 +175,157 @@ class OllamaProvider(LLMProvider):
         """
         prompt = PERFORMANCE_ANALYSIS_PROMPT.format(code_diff=code_diff)
         return self._call_ollama(prompt)
+
+    def generate_auto_fix(self, finding: Dict[str, Any], code_diff: str) -> str:
+        """
+        Generate a safe, conservative auto-fix for a finding.
+
+        Args:
+            finding: Finding dictionary with keys: severity, title, category, file_path, line_number
+            code_diff: Git diff or code snippet containing the issue
+
+        Returns:
+            JSON string with structure:
+            {
+                "auto_fix": "fixed code snippet",
+                "confidence": 0.95
+            }
+
+        Raises:
+            TimeoutError: If request exceeds timeout
+            RuntimeError: If Ollama returns an error
+        """
+        prompt = f"""Generate a SAFE, CONSERVATIVE auto-fix for this code issue.
+
+ISSUE DETAILS:
+Title: {finding.get('title', 'Unknown')}
+Severity: {finding.get('severity', 'unknown')}
+Category: {finding.get('category', 'unknown')}
+File: {finding.get('file_path', 'unknown')}
+Line: {finding.get('line_number', '?')}
+
+CODE CONTEXT:
+{code_diff}
+
+REQUIREMENTS FOR THE FIX:
+1. Fix ONLY the specific issue - no additional refactoring
+2. Maintain existing code style and conventions
+3. No new external dependencies unless already imported
+4. Return valid, runnable code
+5. Be conservative - prefer minimal changes
+6. Include a confidence score (0.0-1.0) where 1.0 is very confident
+
+RESPONSE FORMAT:
+Return ONLY valid JSON (no markdown, no extra text):
+{{
+    "auto_fix": "the fixed code",
+    "confidence": 0.85
+}}
+
+If you cannot generate a safe fix, set auto_fix to null and confidence to a low value."""
+
+        try:
+            response = self._call_ollama(prompt)
+            # Parse and validate response
+            data = json.loads(response)
+
+            # Ensure confidence is a number between 0 and 1
+            if "confidence" in data and not isinstance(data["confidence"], (int, float)):
+                data["confidence"] = float(data.get("confidence", 0))
+
+            return json.dumps(data)
+        except json.JSONDecodeError:
+            # Return low confidence if we can't parse response
+            logger.warning(f"Failed to parse auto_fix response as JSON: {response[:100]}")
+            return json.dumps({"auto_fix": None, "confidence": 0.0})
+
+    def generate_explanation(self, finding: Dict[str, Any], code_diff: str) -> str:
+        """
+        Generate an educational explanation of why this finding matters.
+
+        Args:
+            finding: Finding dictionary with keys: severity, title, category, file_path, line_number
+            code_diff: Git diff or code snippet containing the issue
+
+        Returns:
+            String with 2-3 sentence explanation
+
+        Raises:
+            TimeoutError: If request exceeds timeout
+            RuntimeError: If Ollama returns an error
+        """
+        prompt = f"""Explain this code issue in 2-3 sentences for a developer.
+
+ISSUE:
+Title: {finding.get('title', 'Unknown')}
+Category: {finding.get('category', 'unknown')}
+Severity: {finding.get('severity', 'unknown')}
+
+CODE:
+{code_diff}
+
+EXPLANATION REQUIREMENTS:
+1. Keep it concise (2-3 sentences, <200 chars)
+2. Explain WHY it matters
+3. Be educational and actionable
+4. Avoid overly technical jargon
+5. Make it clear what the impact is
+
+Return ONLY the explanation text, no JSON or markdown."""
+
+        try:
+            response = self._call_ollama(prompt)
+            # Clean up response
+            return response.strip()
+        except Exception as e:
+            logger.error(f"Error generating explanation: {e}")
+            raise
+
+    def generate_improvement_suggestions(self, finding: Dict[str, Any], code_diff: str) -> str:
+        """
+        Generate best practices and improvement suggestions for a finding.
+
+        Args:
+            finding: Finding dictionary with keys: severity, title, category, file_path, line_number
+            code_diff: Git diff or code snippet containing the issue
+
+        Returns:
+            String with 2-3 bullet-point suggestions
+
+        Raises:
+            TimeoutError: If request exceeds timeout
+            RuntimeError: If Ollama returns an error
+        """
+        prompt = f"""Generate 2-3 best practice suggestions for this code issue.
+
+ISSUE:
+Title: {finding.get('title', 'Unknown')}
+Category: {finding.get('category', 'unknown')}
+Severity: {finding.get('severity', 'unknown')}
+
+CODE:
+{code_diff}
+
+SUGGESTION REQUIREMENTS:
+1. Provide 2-3 actionable best practices
+2. Reference specific patterns, libraries, or approaches
+3. Be specific and non-generic
+4. Focus on prevention and best practices
+5. Format as bullet points with "-" prefix
+
+Return ONLY the suggestions, one bullet point per line.
+Example format:
+- Use parameterized queries with database drivers
+- Consider using an ORM like SQLAlchemy
+- Always validate user input before database operations"""
+
+        try:
+            response = self._call_ollama(prompt)
+            # Clean up response
+            return response.strip()
+        except Exception as e:
+            logger.error(f"Error generating improvement suggestions: {e}")
+            raise
 
     def _call_ollama(self, prompt: str) -> str:
         """
