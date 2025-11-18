@@ -119,6 +119,87 @@ class LLMProvider(ABC):
         """
         return self.analyze_performance(code_diff)
 
+    @abstractmethod
+    def generate_auto_fix(self, finding: Dict[str, Any], code_diff: str) -> str:
+        """
+        Generate a safe, conservative auto-fix for a finding.
+
+        Args:
+            finding: Finding dictionary with keys: severity, title, category, file_path, line_number
+            code_diff: Git diff or code snippet containing the issue
+
+        Returns:
+            JSON string with structure:
+            {
+                "auto_fix": "fixed code snippet",
+                "confidence": 0.95
+            }
+
+            Returns null auto_fix if not confident (confidence < 0.8).
+
+        Raises:
+            TimeoutError: If generation takes too long
+            RuntimeError: If provider is unavailable
+
+        Note:
+            Only called for high/critical severity findings.
+            Must include confidence score (0.0-1.0).
+            Fixes should be minimal and conservative (fix only the issue).
+        """
+        pass
+
+    @abstractmethod
+    def generate_explanation(self, finding: Dict[str, Any], code_diff: str) -> str:
+        """
+        Generate an educational explanation of why this finding matters.
+
+        Args:
+            finding: Finding dictionary with keys: severity, title, category, file_path, line_number
+            code_diff: Git diff or code snippet containing the issue
+
+        Returns:
+            String with 2-3 sentence explanation of:
+            - Why the issue matters
+            - What impact it has
+            - Why it should be fixed
+
+        Raises:
+            TimeoutError: If generation takes too long
+            RuntimeError: If provider is unavailable
+
+        Note:
+            Called for all severity levels.
+            Keep response concise (<500 chars).
+            Make it educational and actionable.
+        """
+        pass
+
+    @abstractmethod
+    def generate_improvement_suggestions(self, finding: Dict[str, Any], code_diff: str) -> str:
+        """
+        Generate best practices and improvement suggestions for a finding.
+
+        Args:
+            finding: Finding dictionary with keys: severity, title, category, file_path, line_number
+            code_diff: Git diff or code snippet containing the issue
+
+        Returns:
+            String with 2-3 bullet-point suggestions:
+            - Best practices related to the issue
+            - Patterns to follow
+            - Ways to prevent similar issues
+
+        Raises:
+            TimeoutError: If generation takes too long
+            RuntimeError: If provider is unavailable
+
+        Note:
+            Only called for high/critical severity findings.
+            Make suggestions specific and actionable.
+            Reference patterns, libraries, or approaches.
+        """
+        pass
+
     @staticmethod
     def validate_response(response: str) -> Dict[str, Any]:
         """
