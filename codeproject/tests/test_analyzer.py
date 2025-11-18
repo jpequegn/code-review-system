@@ -27,8 +27,12 @@ def mock_llm_provider():
 
 @pytest.fixture
 def analyzer(mock_llm_provider):
-    """Provide a CodeAnalyzer with mock LLM provider."""
-    return CodeAnalyzer(llm_provider=mock_llm_provider)
+    """Provide a CodeAnalyzer with mock LLM provider.
+
+    Note: Enrichment is disabled for backward compatibility with existing tests
+    that expect AnalyzedFinding objects directly.
+    """
+    return CodeAnalyzer(llm_provider=mock_llm_provider, enrich_suggestions=False)
 
 
 @pytest.fixture
