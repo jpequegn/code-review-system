@@ -22,6 +22,7 @@ from src.database import FindingCategory, FindingSeverity, CodeMetrics, Review
 from src.tools.runner import ToolRunner, ToolExecutionError, ToolParsingError
 from src.tools.unifier import FindingsUnifier, UnifiedFinding
 from src.metrics.collector import PythonMetricsCollector, MetricsCollectorError
+from src.suggestions import enrich_findings_with_suggestions
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ class CodeAnalyzer:
         metrics_collector: Optional[PythonMetricsCollector] = None,
         repo_path: Optional[str] = None,
         use_context: bool = True,
+        enrich_suggestions: bool = True,
     ):
         """
         Initialize CodeAnalyzer.
@@ -128,6 +130,7 @@ class CodeAnalyzer:
             metrics_collector: Metrics collector (uses default if not provided)
             repo_path: Path to repository for context building (optional)
             use_context: Whether to use context-enhanced LLM analysis (default: True)
+            enrich_suggestions: Whether to enrich findings with AI suggestions (default: True)
         """
         self.llm_provider = llm_provider or get_llm_provider()
         self.tool_runner = tool_runner if tool_runner is not None else ToolRunner()
@@ -135,6 +138,7 @@ class CodeAnalyzer:
         self.use_tools = use_tools
         self.metrics_collector = metrics_collector or PythonMetricsCollector()
         self.use_context = use_context
+        self.enrich_suggestions = enrich_suggestions
         self.context_builder = ContextBuilder(repo_path) if repo_path and use_context else None
         self.cached_context: Optional[CodebaseContext] = None
 
@@ -181,6 +185,7 @@ class CodeAnalyzer:
         2. Run LLM analysis (security, performance)
         3. Unify findings and deduplicate
         4. Sort by severity and confidence
+        5. Enrich with AI-powered suggestions (optional)
 
         Args:
             file_diffs: List of FileDiff objects from DiffParser
@@ -219,7 +224,11 @@ class CodeAnalyzer:
         # Step 5: Convert to AnalyzedFinding format for consistency
         analyzed = [self._unified_to_analyzed(f) for f in unified_findings]
 
-        # Step 6: Collect and persist metrics if database session provided
+        # Step 6: Enrich findings with AI-powered suggestions (optional)
+        if self.enrich_suggestions:
+            analyzed = self._enrich_findings_with_suggestions(analyzed, code_snippet)
+
+        # Step 7: Collect and persist metrics if database session provided
         if db and review_id:
             self._collect_and_persist_metrics(file_diffs, db, review_id)
 
@@ -683,3 +692,39 @@ class CodeAnalyzer:
         }
 
         return sorted(findings, key=lambda f: severity_order.get(f.severity, 99))
+
+    def _enrich_findings_with_suggestions(
+        self,
+        findings: List[AnalyzedFinding],
+        code_snippet: str,
+    ) -> List[AnalyzedFinding]:
+        """
+        Enrich findings with AI-generated suggestions.
+
+        Wraps the suggestion enrichment module with error handling.
+        Returns original findings if enrichment fails.
+
+        Args:
+            findings: List of AnalyzedFinding objects to enrich
+            code_snippet: Code snippet for context
+
+        Returns:
+            List of findings with suggestions attached (EnrichedFinding objects)
+            or original findings if enrichment fails
+        """
+        if not findings:
+            return findings
+
+        try:
+            logger.debug(f"Enriching {len(findings)} findings with suggestions...")
+            enriched_findings = enrich_findings_with_suggestions(
+                findings, code_snippet, self.llm_provider
+            )
+            logger.info(f"Successfully enriched {len(enriched_findings)} findings")
+            return enriched_findings
+        except Exception as e:
+            logger.warning(
+                f"Failed to enrich findings with suggestions: {str(e)}. "
+                f"Returning findings without suggestions."
+            )
+            return findings
