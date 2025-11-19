@@ -13,6 +13,7 @@ from typing import Dict, Any
 from src.analysis.analyzer import AnalyzedFinding
 from src.database import FindingCategory, FindingSeverity
 from src.suggestions import enrich_findings_with_suggestions, EnrichedFinding, SuggestionSet
+from src.suggestions.cache import get_cache
 
 
 # ============================================================================
@@ -23,6 +24,11 @@ from src.suggestions import enrich_findings_with_suggestions, EnrichedFinding, S
 @pytest.fixture
 def mock_llm_provider():
     """Create a mock LLM provider for testing."""
+    # Clear cache before each test to avoid cross-contamination
+    cache = get_cache()
+    if cache.enabled:
+        cache.clear_all()
+
     provider = MagicMock()
     return provider
 
@@ -230,7 +236,7 @@ class TestConfidenceFiltering:
     ):
         """Auto-fixes with confidence >= 0.8 should be included."""
         mock_llm_provider.generate_auto_fix.return_value = json.dumps(
-            {"auto_fix": "safe code", "confidence": 0.95}
+            {"auto_fix": "x = user_input.strip()", "confidence": 0.95}
         )
         mock_llm_provider.generate_explanation.return_value = "Explanation"
         mock_llm_provider.generate_improvement_suggestions.return_value = "- Suggestion"
@@ -319,7 +325,7 @@ class TestGracefulDegradation:
     ):
         """If some suggestions fail, others should still be included."""
         mock_llm_provider.generate_auto_fix.return_value = json.dumps(
-            {"auto_fix": "fixed code", "confidence": 0.9}
+            {"auto_fix": "x = user_input.strip().lower()", "confidence": 0.9}
         )
         mock_llm_provider.generate_explanation.side_effect = RuntimeError("Failed")
         mock_llm_provider.generate_improvement_suggestions.return_value = (

@@ -19,6 +19,7 @@ from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from src.llm.provider import LLMProvider
 from src.database import FindingSeverity
 from src.suggestions.cache import generate_cache_key, get_cache
+from src.suggestions.validators import validate_auto_fix
 
 if TYPE_CHECKING:
     from src.analysis.analyzer import AnalyzedFinding
@@ -359,13 +360,19 @@ def _generate_auto_fix(
     llm_provider: LLMProvider,
 ) -> tuple[Optional[str], float]:
     """
-    Generate auto-fix for a finding.
+    Generate auto-fix for a finding with validation.
 
     Returns None, 0.0 if:
     - LLM times out
     - LLM returns invalid JSON
     - Confidence score is below 0.8
     - LLM declines to generate fix
+    - Code fails security or syntax validation
+
+    Validation includes:
+    - Python syntax validation using ast.parse()
+    - Confidence threshold check (minimum 0.8)
+    - Security check (no exec, eval, dangerous operations)
 
     Args:
         finding: AnalyzedFinding to generate fix for
@@ -397,7 +404,7 @@ def _generate_auto_fix(
         auto_fix = data.get("auto_fix")
         confidence = data.get("confidence", 0.0)
 
-        # Validate
+        # Validate confidence type
         if not isinstance(confidence, (int, float)):
             confidence = 0.0
 
@@ -411,6 +418,21 @@ def _generate_auto_fix(
         if confidence < 0.8:
             logger.debug(f"Auto-fix confidence too low ({confidence:.2f}), rejecting")
             return None, confidence
+
+        # Validate auto-fix (syntax, confidence, security)
+        is_valid, errors = validate_auto_fix(
+            auto_fix,
+            confidence=confidence,
+            syntax_required=True,
+            confidence_threshold=0.8,
+            security_required=True,
+        )
+
+        if not is_valid:
+            logger.warning(
+                f"Auto-fix validation failed for '{finding.title}': {'; '.join(errors)}"
+            )
+            return None, 0.0
 
         logger.debug(f"Generated auto-fix with confidence {confidence:.2f}")
         return auto_fix, confidence
