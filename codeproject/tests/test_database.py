@@ -495,6 +495,254 @@ class TestReviewFindingRelationship:
             test_db.commit()
 
 
+class TestFindingSuggestionFields:
+    """Tests for AI-generated suggestion fields in Finding model (Task 4.2)."""
+
+    def test_finding_auto_fix_nullable(self, test_db):
+        """Test that auto_fix field is optional and nullable."""
+        review = Review(
+            pr_id=1,
+            repo_url="https://github.com/user/repo",
+            branch="main",
+            commit_sha="abc123"
+        )
+        test_db.add(review)
+        test_db.commit()
+
+        finding = Finding(
+            review_id=review.id,
+            category=FindingCategory.SECURITY,
+            severity=FindingSeverity.HIGH,
+            title="Security Issue",
+            description="Test issue",
+            file_path="src/test.py"
+            # auto_fix intentionally omitted
+        )
+
+        test_db.add(finding)
+        test_db.commit()
+
+        retrieved = test_db.query(Finding).first()
+        assert retrieved.auto_fix is None
+
+    def test_finding_explanation_nullable(self, test_db):
+        """Test that explanation field is optional and nullable."""
+        review = Review(
+            pr_id=1,
+            repo_url="https://github.com/user/repo",
+            branch="main",
+            commit_sha="abc123"
+        )
+        test_db.add(review)
+        test_db.commit()
+
+        finding = Finding(
+            review_id=review.id,
+            category=FindingCategory.BEST_PRACTICE,
+            severity=FindingSeverity.MEDIUM,
+            title="Best Practice Issue",
+            description="Test issue",
+            file_path="src/test.py"
+            # explanation intentionally omitted
+        )
+
+        test_db.add(finding)
+        test_db.commit()
+
+        retrieved = test_db.query(Finding).first()
+        assert retrieved.explanation is None
+
+    def test_finding_improvement_suggestions_nullable(self, test_db):
+        """Test that improvement_suggestions field is optional and nullable."""
+        review = Review(
+            pr_id=1,
+            repo_url="https://github.com/user/repo",
+            branch="main",
+            commit_sha="abc123"
+        )
+        test_db.add(review)
+        test_db.commit()
+
+        finding = Finding(
+            review_id=review.id,
+            category=FindingCategory.PERFORMANCE,
+            severity=FindingSeverity.LOW,
+            title="Performance Issue",
+            description="Test issue",
+            file_path="src/test.py"
+            # improvement_suggestions intentionally omitted
+        )
+
+        test_db.add(finding)
+        test_db.commit()
+
+        retrieved = test_db.query(Finding).first()
+        assert retrieved.improvement_suggestions is None
+
+    def test_finding_with_all_suggestions(self, test_db):
+        """Test that all three suggestion fields can be populated together."""
+        review = Review(
+            pr_id=1,
+            repo_url="https://github.com/user/repo",
+            branch="main",
+            commit_sha="abc123"
+        )
+        test_db.add(review)
+        test_db.commit()
+
+        auto_fix_text = """
+def vulnerable_query(user_id):
+    # BEFORE: SQL injection vulnerability
+    # query = f"SELECT * FROM users WHERE id = {user_id}"
+
+    # AFTER: Use parameterized queries
+    query = "SELECT * FROM users WHERE id = ?"
+    return db.execute(query, (user_id,))
+"""
+
+        explanation_text = "This is a SQL injection vulnerability where user input is directly concatenated into a SQL query. An attacker could modify the query by injecting malicious SQL code. Always use parameterized queries to prevent this attack."
+
+        improvement_text = """
+- Use parameterized queries for all database operations
+- Implement input validation and sanitization
+- Use an ORM that handles query escaping automatically
+- Implement least privilege database user permissions
+"""
+
+        finding = Finding(
+            review_id=review.id,
+            category=FindingCategory.SECURITY,
+            severity=FindingSeverity.CRITICAL,
+            title="SQL Injection Vulnerability",
+            description="User input directly concatenated into SQL query",
+            file_path="src/database.py",
+            line_number=42,
+            suggested_fix="Use parameterized queries",
+            auto_fix=auto_fix_text,
+            explanation=explanation_text,
+            improvement_suggestions=improvement_text
+        )
+
+        test_db.add(finding)
+        test_db.commit()
+
+        retrieved = test_db.query(Finding).first()
+        assert retrieved.auto_fix == auto_fix_text
+        assert retrieved.explanation == explanation_text
+        assert retrieved.improvement_suggestions == improvement_text
+
+    def test_finding_with_partial_suggestions(self, test_db):
+        """Test that some suggestions can be populated while others are None."""
+        review = Review(
+            pr_id=1,
+            repo_url="https://github.com/user/repo",
+            branch="main",
+            commit_sha="abc123"
+        )
+        test_db.add(review)
+        test_db.commit()
+
+        finding = Finding(
+            review_id=review.id,
+            category=FindingCategory.BEST_PRACTICE,
+            severity=FindingSeverity.MEDIUM,
+            title="Code Quality Issue",
+            description="Complex function",
+            file_path="src/utils.py",
+            line_number=10,
+            explanation="This function is too complex.",
+            # auto_fix and improvement_suggestions intentionally omitted
+        )
+
+        test_db.add(finding)
+        test_db.commit()
+
+        retrieved = test_db.query(Finding).first()
+        assert retrieved.explanation == "This function is too complex."
+        assert retrieved.auto_fix is None
+        assert retrieved.improvement_suggestions is None
+
+    def test_suggestion_fields_persist_text(self, test_db):
+        """Test that suggestion fields can store and retrieve multi-line text."""
+        review = Review(
+            pr_id=1,
+            repo_url="https://github.com/user/repo",
+            branch="main",
+            commit_sha="abc123"
+        )
+        test_db.add(review)
+        test_db.commit()
+
+        multiline_text = """Line 1
+Line 2
+Line 3
+Line 4 with special chars: !@#$%^&*()"""
+
+        finding = Finding(
+            review_id=review.id,
+            category=FindingCategory.PERFORMANCE,
+            severity=FindingSeverity.HIGH,
+            title="Performance Issue",
+            description="Test",
+            file_path="src/test.py",
+            auto_fix=multiline_text
+        )
+
+        test_db.add(finding)
+        test_db.commit()
+
+        retrieved = test_db.query(Finding).first()
+        assert retrieved.auto_fix == multiline_text
+
+    def test_multiple_findings_different_suggestions(self, test_db):
+        """Test that different findings can have different suggestion values."""
+        review = Review(
+            pr_id=1,
+            repo_url="https://github.com/user/repo",
+            branch="main",
+            commit_sha="abc123"
+        )
+        test_db.add(review)
+        test_db.commit()
+
+        finding1 = Finding(
+            review_id=review.id,
+            category=FindingCategory.SECURITY,
+            severity=FindingSeverity.CRITICAL,
+            title="Issue 1",
+            description="Security",
+            file_path="src/test.py",
+            auto_fix="Fix 1",
+            explanation="Explanation 1"
+        )
+
+        finding2 = Finding(
+            review_id=review.id,
+            category=FindingCategory.PERFORMANCE,
+            severity=FindingSeverity.MEDIUM,
+            title="Issue 2",
+            description="Performance",
+            file_path="src/test.py",
+            explanation="Explanation 2",
+            improvement_suggestions="Improve 2"
+        )
+
+        test_db.add(finding1)
+        test_db.add(finding2)
+        test_db.commit()
+
+        findings = test_db.query(Finding).order_by(Finding.id).all()
+        assert len(findings) == 2
+
+        assert findings[0].auto_fix == "Fix 1"
+        assert findings[0].explanation == "Explanation 1"
+        assert findings[0].improvement_suggestions is None
+
+        assert findings[1].auto_fix is None
+        assert findings[1].explanation == "Explanation 2"
+        assert findings[1].improvement_suggestions == "Improve 2"
+
+
 class TestDatabaseInitialization:
     """Tests for database initialization."""
 
@@ -535,9 +783,14 @@ class TestDatabaseInitialization:
         inspector = inspect(engine)
         columns = [col["name"] for col in inspector.get_columns("findings")]
 
-        required_columns = ["id", "review_id", "category", "severity", "title", "description", "file_path", "line_number", "suggested_fix", "created_at"]
+        required_columns = [
+            "id", "review_id", "category", "severity", "title", "description",
+            "file_path", "line_number", "suggested_fix", "created_at",
+            # AI-generated suggestion fields (Task 4.2)
+            "auto_fix", "explanation", "improvement_suggestions"
+        ]
         for col in required_columns:
-            assert col in columns
+            assert col in columns, f"Column '{col}' not found in findings table"
 
     def test_reviews_indexes(self):
         """Test that reviews table has expected indexes."""

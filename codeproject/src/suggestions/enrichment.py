@@ -80,11 +80,53 @@ class EnrichedFinding:
     Finding with enriched suggestions.
 
     Extends AnalyzedFinding with AI-generated suggestions.
+    Provides transparent access to underlying finding properties for compatibility.
     """
 
     def __init__(self, finding: "AnalyzedFinding", suggestions: Optional[SuggestionSet] = None):
         self.finding = finding
         self.suggestions = suggestions or SuggestionSet()
+
+    # Convenience properties for accessing underlying finding attributes
+    @property
+    def category(self):
+        """Access finding category."""
+        return self.finding.category
+
+    @property
+    def severity(self):
+        """Access finding severity."""
+        return self.finding.severity
+
+    @property
+    def title(self):
+        """Access finding title."""
+        return self.finding.title
+
+    @property
+    def description(self):
+        """Access finding description."""
+        return self.finding.description
+
+    @property
+    def file_path(self):
+        """Access finding file path."""
+        return self.finding.file_path
+
+    @property
+    def line_number(self):
+        """Access finding line number."""
+        return self.finding.line_number
+
+    @property
+    def suggested_fix(self):
+        """Access finding suggested fix."""
+        return self.finding.suggested_fix
+
+    @property
+    def confidence(self):
+        """Access finding confidence."""
+        return self.finding.confidence
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""

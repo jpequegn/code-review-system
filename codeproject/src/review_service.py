@@ -338,9 +338,12 @@ class ReviewService:
         """
         Store analyzed findings in database.
 
+        Handles both AnalyzedFinding and EnrichedFinding objects,
+        persisting AI-generated suggestions when available.
+
         Args:
             review: Review object
-            findings: List of AnalyzedFinding objects
+            findings: List of AnalyzedFinding or EnrichedFinding objects
 
         Returns:
             List of stored Finding records
@@ -354,7 +357,18 @@ class ReviewService:
             # Map severity
             severity = finding.severity
 
-            # Create Finding record
+            # Check if this is an EnrichedFinding with suggestions
+            auto_fix = None
+            explanation = None
+            improvement_suggestions = None
+
+            if hasattr(finding, 'suggestions') and finding.suggestions:
+                # EnrichedFinding with suggestions
+                auto_fix = finding.suggestions.auto_fix
+                explanation = finding.suggestions.explanation
+                improvement_suggestions = finding.suggestions.improvements
+
+            # Create Finding record with optional suggestion fields
             db_finding = Finding(
                 review_id=review.id,
                 category=category,
@@ -364,6 +378,10 @@ class ReviewService:
                 file_path=finding.file_path,
                 line_number=finding.line_number,
                 suggested_fix=finding.suggested_fix,
+                # AI-generated suggestions (Task 4.2)
+                auto_fix=auto_fix,
+                explanation=explanation,
+                improvement_suggestions=improvement_suggestions,
             )
 
             self.db.add(db_finding)
