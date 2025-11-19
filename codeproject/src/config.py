@@ -86,6 +86,20 @@ class Settings(BaseSettings):
     )
 
     # ============================================================================
+    # Suggestion Caching Configuration
+    # ============================================================================
+
+    cache_suggestions: bool = Field(
+        default=True,
+        description="Enable caching for AI-generated suggestions to avoid redundant LLM calls",
+    )
+
+    suggestion_cache_ttl_days: int = Field(
+        default=7,
+        description="Time-to-live for cached suggestions in days (default: 7 days)",
+    )
+
+    # ============================================================================
     # Validation Methods
     # ============================================================================
 
@@ -127,6 +141,14 @@ class Settings(BaseSettings):
         if v.upper() not in valid_levels:
             raise ValueError(f"log_level must be one of {valid_levels}")
         return v.upper()
+
+    @field_validator("suggestion_cache_ttl_days")
+    @classmethod
+    def validate_cache_ttl(cls, v: int) -> int:
+        """Validate that cache TTL is positive."""
+        if v <= 0:
+            raise ValueError("suggestion_cache_ttl_days must be greater than 0")
+        return v
 
     # ============================================================================
     # Pydantic Settings Configuration

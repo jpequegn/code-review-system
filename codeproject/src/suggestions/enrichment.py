@@ -18,6 +18,7 @@ from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
 from src.llm.provider import LLMProvider
 from src.database import FindingSeverity
+from src.suggestions.cache import generate_cache_key, get_cache
 
 if TYPE_CHECKING:
     from src.analysis.analyzer import AnalyzedFinding
@@ -236,6 +237,9 @@ def _generate_suggestions_for_finding(
     """
     Generate suggestions for a single finding based on severity.
 
+    Implements caching to avoid redundant LLM calls for identical findings.
+    Cache key is based on finding title and file path.
+
     Args:
         finding: AnalyzedFinding to generate suggestions for
         code_diff: Code diff for context
@@ -250,6 +254,25 @@ def _generate_suggestions_for_finding(
     # Dry run: return empty suggestions
     if dry_run:
         return suggestions
+
+    # Check cache first
+    cache = get_cache()
+    cache_key = generate_cache_key(finding.title, finding.file_path, code_diff[:500])
+
+    cached = cache.get(cache_key)
+    if cached is not None:
+        logger.debug(f"Cache hit for finding '{finding.title}'")
+        # Build SuggestionSet from cached data
+        suggestions = SuggestionSet(
+            auto_fix=cached.get("auto_fix"),
+            auto_fix_confidence=cached.get("auto_fix_confidence", 0.0),
+            explanation=cached.get("explanation"),
+            improvements=cached.get("improvement_suggestions"),
+        )
+        return suggestions
+
+    # Cache miss: generate suggestions
+    logger.debug(f"Cache miss for finding '{finding.title}', generating new suggestions")
 
     # Always generate explanation (for all severities)
     explanation = _generate_explanation(finding, code_diff, llm_provider)
@@ -268,6 +291,17 @@ def _generate_suggestions_for_finding(
         improvements = _generate_improvement_suggestions(finding, code_diff, llm_provider)
         if improvements:
             suggestions.improvements = improvements
+
+    # Store in cache for future use
+    cache.set(
+        cache_key,
+        finding.title,
+        finding.file_path,
+        auto_fix=suggestions.auto_fix,
+        auto_fix_confidence=suggestions.auto_fix_confidence,
+        explanation=suggestions.explanation,
+        improvement_suggestions=suggestions.improvements,
+    )
 
     return suggestions
 
