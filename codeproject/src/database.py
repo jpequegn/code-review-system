@@ -483,6 +483,105 @@ class LearningMetrics(Base):
         return f"<LearningMetrics({self.category}/{self.severity}, accuracy={self.accuracy:.1f}%)>"
 
 
+class SuggestionFeedback(Base):
+    """
+    Tracks feedback on AI-generated suggestions from developers.
+
+    Records whether developers accepted, rejected, or ignored suggestions,
+    enabling the system to learn from real-world usage patterns.
+    """
+
+    __tablename__ = "suggestion_feedback"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Foreign key to finding
+    finding_id = Column(
+        Integer,
+        ForeignKey("findings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Type of feedback (accepted, rejected, ignored)
+    feedback_type = Column(String(50), nullable=False, index=True)
+
+    # Original confidence score of the suggestion
+    confidence = Column(Float, nullable=True)
+
+    # Developer who provided feedback
+    developer_id = Column(String(255), nullable=True)
+
+    # Optional comment from developer
+    developer_comment = Column(Text, nullable=True)
+
+    # Commit hash if suggestion was applied
+    commit_hash = Column(String(40), nullable=True, index=True)
+
+    # PR number for tracking
+    pr_number = Column(Integer, nullable=True, index=True)
+
+    # Timestamps
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+    updated_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    # Relationship to finding
+    finding = relationship("Finding", backref="feedbacks")
+
+    def __repr__(self) -> str:
+        return f"<SuggestionFeedback(finding_id={self.finding_id}, type={self.feedback_type})>"
+
+
+class SuggestionImpact(Base):
+    """
+    Aggregates impact metrics for suggestions related to specific findings.
+
+    Tracks acceptance rates, fix times, and prevalence to understand
+    which types of suggestions are most valuable.
+    """
+
+    __tablename__ = "suggestion_impact"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Foreign key to finding
+    finding_id = Column(
+        Integer,
+        ForeignKey("findings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Impact score (0-100)
+    impact_score = Column(Float, default=0.0, nullable=False)
+
+    # Acceptance rate (0-100%)
+    acceptance_rate = Column(Float, default=0.0, nullable=False)
+
+    # Average time to fix in hours
+    avg_time_to_fix = Column(Float, nullable=True)
+
+    # Count of similar findings seen
+    similar_findings_count = Column(Integer, default=0, nullable=False)
+
+    # Last update timestamp
+    last_updated = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+    # Relationship to finding
+    finding = relationship("Finding", backref="impact")
+
+    def __repr__(self) -> str:
+        return f"<SuggestionImpact(finding_id={self.finding_id}, score={self.impact_score:.1f})>"
+
+
 # ============================================================================
 # Database Initialization
 # ============================================================================
