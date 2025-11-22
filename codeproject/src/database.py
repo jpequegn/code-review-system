@@ -705,6 +705,165 @@ class PatternMetrics(Base):
         return f"<PatternMetrics({self.pattern_type}, {self.occurrences}x, {self.acceptance_rate:.1%})>"
 
 
+class TeamMetrics(Base):
+    """
+    Aggregated metrics for a team or repository.
+
+    Tracks team-level performance indicators including finding acceptance rates,
+    average fix time, ROI from auto-fixes, and common vulnerability types.
+    Used for insights dashboard and team performance tracking.
+    """
+
+    __tablename__ = "team_metrics"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Team identifier (repo_url for now, can be extended for multi-team)
+    team_id = Column(String(512), nullable=False, index=True)
+
+    # Repository URL
+    repo_url = Column(String(512), nullable=False, index=True)
+
+    # Aggregated metrics
+    total_findings = Column(Integer, default=0, nullable=False)
+    accepted_findings = Column(Integer, default=0, nullable=False)
+    rejected_findings = Column(Integer, default=0, nullable=False)
+    ignored_findings = Column(Integer, default=0, nullable=False)
+
+    # Calculated metrics
+    acceptance_rate = Column(Float, default=0.0, nullable=False)  # 0-100
+    avg_fix_time = Column(Float, default=0.0, nullable=True)  # hours
+    roi_hours_saved = Column(Float, default=0.0, nullable=False)  # hours
+    roi_percentage = Column(Float, default=0.0, nullable=False)  # % time saved
+
+    # Top vulnerabilities (JSON: list of {type: count})
+    top_vulnerabilities = Column(Text, nullable=True)
+
+    # Trend direction ('improving', 'declining', 'stable')
+    trend_direction = Column(String(50), default="stable", nullable=False)
+
+    # Trend strength (0-1, how significant the trend)
+    trend_strength = Column(Float, default=0.0, nullable=False)
+
+    # Timestamp for metrics period
+    period_start = Column(DateTime, nullable=False, index=True)
+    period_end = Column(DateTime, nullable=False, index=True)
+
+    # Last updated
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    updated_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<TeamMetrics({self.team_id}, acceptance={self.acceptance_rate:.1f}%)>"
+
+
+class LearningPath(Base):
+    """
+    Represents a recommended learning path for a team.
+
+    Identifies improvement areas ranked by impact and provides resources,
+    expected hours saved, and priority scoring for team development.
+    """
+
+    __tablename__ = "learning_paths"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Team identifier
+    team_id = Column(String(512), nullable=False, index=True)
+
+    # Repository URL
+    repo_url = Column(String(512), nullable=False, index=True)
+
+    # Vulnerability/pattern type (e.g., "SQL Injection", "Buffer Overflow")
+    vulnerability_type = Column(String(255), nullable=False, index=True)
+
+    # Category of vulnerability
+    category = Column(SQLEnum(FindingCategory), nullable=False, index=True)
+
+    # Current acceptance/fix rate for this type
+    current_acceptance_rate = Column(Float, default=0.0, nullable=False)  # 0-100
+
+    # Potential acceptance rate if team improves
+    potential_acceptance_rate = Column(Float, default=0.0, nullable=False)  # 0-100
+
+    # Estimated hours that could be saved with improvement
+    estimated_hours_saved = Column(Float, default=0.0, nullable=False)
+
+    # Recommended learning resources (JSON array of URLs/resources)
+    resources = Column(Text, nullable=True)
+
+    # Composite priority score (0-1, combines impact and improvement potential)
+    priority_score = Column(Float, default=0.0, nullable=False)
+
+    # Rank in priority order (1 = highest priority)
+    rank = Column(Integer, nullable=False, index=True)
+
+    # Whether this path is active/recommended
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    # Metrics for effectiveness
+    occurrences = Column(Integer, default=0, nullable=False)  # How many times found
+    fixed_count = Column(Integer, default=0, nullable=False)  # How many fixed
+
+    # Timestamp
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    updated_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<LearningPath({self.vulnerability_type}, rank={self.rank}, priority={self.priority_score:.2f})>"
+
+
+class InsightsTrend(Base):
+    """
+    Historical trend data for insights analysis.
+
+    Tracks metric changes over time (weekly/monthly) to detect improvement
+    or regression patterns and compute trend directions.
+    """
+
+    __tablename__ = "insights_trends"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Team identifier
+    team_id = Column(String(512), nullable=False, index=True)
+
+    # Time period (week/month)
+    period = Column(String(50), nullable=False, index=True)  # "2025-W47", "2025-01"
+
+    # Metric snapshots for the period
+    findings_count = Column(Integer, default=0, nullable=False)
+    acceptance_rate = Column(Float, default=0.0, nullable=False)
+    avg_fix_time = Column(Float, default=0.0, nullable=True)
+    critical_findings = Column(Integer, default=0, nullable=False)
+    high_findings = Column(Integer, default=0, nullable=False)
+    medium_findings = Column(Integer, default=0, nullable=False)
+    low_findings = Column(Integer, default=0, nullable=False)
+
+    # Top finding categories for the period
+    top_categories = Column(Text, nullable=True)
+
+    # Timestamp
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<InsightsTrend({self.team_id}, {self.period}, acceptance={self.acceptance_rate:.1f}%)>"
+
+
 # ============================================================================
 # Database Initialization
 # ============================================================================
