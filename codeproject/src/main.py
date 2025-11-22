@@ -15,6 +15,7 @@ from src.webhooks.github import (
     handle_github_webhook,
     parse_github_payload,
 )
+from src.api.insights_routes import router as insights_router
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,9 @@ app = FastAPI(
     description="LLM-powered CI/CD code review analyzing security vulnerabilities and performance issues",
     version="0.1.0",
 )
+
+# Include insights API routes
+app.include_router(insights_router)
 
 
 @app.get("/health")
