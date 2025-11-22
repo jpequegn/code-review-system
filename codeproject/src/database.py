@@ -582,6 +582,126 @@ class SuggestionImpact(Base):
         return f"<SuggestionImpact(finding_id={self.finding_id}, score={self.impact_score:.1f})>"
 
 
+class ConfidenceCalibration(Base):
+    """
+    Calibration metrics for confidence score bins.
+
+    Recalibrates confidence scores based on actual feedback outcomes.
+    Divides confidence into 10 bins (0.0-0.1, 0.1-0.2, ..., 0.9-1.0)
+    and tracks precision/recall/F1 for each bin.
+
+    Helps answer: "If the model says 0.85 confidence, what's the real
+    probability that developers will accept this suggestion?"
+    """
+
+    __tablename__ = "confidence_calibration"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Bin number (0-9 representing 0.0-0.1, 0.1-0.2, ..., 0.9-1.0)
+    bin_id = Column(Integer, nullable=False, unique=True, index=True)
+
+    # Human-readable confidence range (e.g., "0.8-0.9")
+    original_confidence_range = Column(String(10), nullable=False)
+
+    # Number of suggestions in this bin
+    sample_size = Column(Integer, default=0, nullable=False)
+
+    # What the model predicted would be accepted
+    original_acceptance_rate = Column(Float, default=0.0, nullable=False)
+
+    # What actually happened (from feedback)
+    actual_acceptance_rate = Column(Float, default=0.0, nullable=False)
+
+    # Precision: TP / (TP + FP) - of accepted, how many correct
+    precision = Column(Float, default=0.0, nullable=False)
+
+    # Recall: TP / (TP + FN) - of all correct, how many found
+    recall = Column(Float, default=0.0, nullable=False)
+
+    # F1 Score: harmonic mean of precision and recall
+    f1_score = Column(Float, default=0.0, nullable=False)
+
+    # Calibrated threshold for this bin based on actual performance
+    calibrated_threshold = Column(Float, default=0.0, nullable=False)
+
+    # Last updated timestamp
+    last_updated = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<ConfidenceCalibration(bin={self.bin_id}, f1={self.f1_score:.2f})>"
+
+
+class PatternMetrics(Base):
+    """
+    Metrics for detected patterns in the codebase.
+
+    Tracks:
+    - How often a pattern occurs
+    - Whether it's an anti-pattern (to avoid)
+    - Acceptance rate for suggestions about this pattern
+    - How to fix it
+    - Files affected
+
+    Used to:
+    - Identify team-specific recurring issues
+    - Learn best practices and anti-patterns
+    - Personalize suggestions based on team patterns
+    """
+
+    __tablename__ = "pattern_metrics"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+
+    # SHA256 hash of normalized pattern name (for deduplication)
+    pattern_hash = Column(String(64), nullable=False, unique=True, index=True)
+
+    # Pattern type/name (e.g., "unclosed_file_handle", "n_plus_one_query")
+    pattern_type = Column(String(255), nullable=False, index=True)
+
+    # Number of times this pattern was detected
+    occurrences = Column(Integer, default=0, nullable=False, index=True)
+
+    # JSON list of file paths where this pattern was found
+    files_affected = Column(Text, nullable=False)  # JSON array
+
+    # Average severity of this pattern (0.0-1.0, 1.0 = most severe)
+    avg_severity = Column(Float, default=0.5, nullable=False)
+
+    # Acceptance rate: % of suggestions for this pattern that were accepted
+    acceptance_rate = Column(Float, default=0.0, nullable=False, index=True)
+
+    # Number of times suggestions for this pattern were actually applied
+    fix_count = Column(Integer, default=0, nullable=False)
+
+    # Is this an anti-pattern? (pattern developers should avoid)
+    anti_pattern = Column(Boolean, default=False, nullable=False, index=True)
+
+    # Prevalence in codebase: 'rare' (<3), 'occasional' (3-10), 'common' (>10)
+    team_prevalence = Column(String(20), default='occasional', nullable=False)
+
+    # Recommended fix/template
+    recommended_fix = Column(Text, nullable=False)
+
+    # Last updated timestamp
+    last_updated = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<PatternMetrics({self.pattern_type}, {self.occurrences}x, {self.acceptance_rate:.1%})>"
+
+
 # ============================================================================
 # Database Initialization
 # ============================================================================
