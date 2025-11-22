@@ -474,6 +474,9 @@ class LearningMetrics(Base):
     # Personal threshold for this category/severity
     confidence_threshold = Column(Float, default=0.5, nullable=False)
 
+    # Average time to fix (in hours) for this category
+    avg_time_to_fix = Column(Float, default=0.0, nullable=True)
+
     # Last updated timestamp
     updated_at = Column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
