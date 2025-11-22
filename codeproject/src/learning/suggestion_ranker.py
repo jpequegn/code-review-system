@@ -7,9 +7,10 @@ Combines multiple scoring components to rank findings by:
 - Impact score (severity × prevalence)
 - Fix time (how quickly developers can fix)
 - Team preferences (learned patterns)
+- Diversity (avoid redundant suggestions)
 """
 
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy.orm import Session
 
 from src.database import (
@@ -19,6 +20,7 @@ from src.database import (
     PatternMetrics,
 )
 from src.learning.confidence_tuner import ConfidenceTuner
+from src.learning.deduplication import DeduplicationService
 
 
 class SuggestionRanker:
@@ -286,16 +288,19 @@ class SuggestionRanker:
         self,
         findings: list[Finding],
         tuner: Optional[ConfidenceTuner] = None,
+        shown_ids: Optional[List[int]] = None,
     ) -> list[tuple[Finding, float, dict]]:
         """
-        Rank findings by composite score.
+        Rank findings by composite score, applying diversity factor.
 
         Returns findings sorted by score (highest first), with component
-        scores for transparency and debugging.
+        scores for transparency and debugging. Applies diversity factor
+        to reduce score of similar suggestions already shown.
 
         Args:
             findings: List of findings to rank
             tuner: Optional ConfidenceTuner for calibration
+            shown_ids: Optional list of finding IDs already shown (for diversity)
 
         Returns:
             List of (finding, total_score, component_scores) tuples
@@ -304,7 +309,9 @@ class SuggestionRanker:
         if not findings:
             return []
 
+        dedup_service = DeduplicationService(self.db)
         ranked = []
+
         for finding in findings:
             scores = {
                 "confidence": self.get_confidence_score(finding, tuner),
@@ -316,6 +323,14 @@ class SuggestionRanker:
 
             total_score = sum(scores[key] * self.weights[key] for key in scores)
             total_score = min(total_score, 1.0)
+
+            # Apply diversity factor if shown_ids provided
+            if shown_ids:
+                diversity_factor = dedup_service.calculate_diversity_factor(
+                    finding.id, shown_ids
+                )
+                total_score = total_score * diversity_factor
+                scores["diversity_factor"] = diversity_factor
 
             ranked.append((finding, total_score, scores))
 
