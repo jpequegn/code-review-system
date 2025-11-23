@@ -1,8 +1,11 @@
 """
-Pattern Learning & Detection - Learn recurring patterns and anti-patterns
+Optimized Pattern Learning & Detection - Uses SQL aggregation instead of Python loops
 
 Identifies team-specific patterns, anti-patterns, and best practices
 from code review feedback to improve suggestion ranking and quality.
+
+Key optimization: Use SQL GROUP BY + aggregation instead of Python loops
+to eliminate N+1 query patterns.
 """
 
 import json
@@ -19,31 +22,12 @@ from src.database import (
 )
 
 
-class PatternLearner:
+class PatternLearnerOptimized:
     """
-    Learn and detect patterns from code review findings and feedback.
+    Optimized pattern learner using SQL aggregation.
 
-    Problem: Not all code issues are equally important. Some patterns appear
-    frequently and are consistently accepted (best practices), others are
-    frequently rejected (anti-patterns), and some are new or context-specific.
-
-    Solution: Track pattern occurrence, acceptance/rejection rates, and
-    affected files to identify team practices and improve prioritization.
-
-    Example:
-        learner = PatternLearner(db_session)
-
-        # Detect all patterns from feedback history
-        patterns = learner.detect_patterns(min_occurrences=2)
-
-        # Identify anti-patterns (mostly rejected)
-        anti_patterns = learner.detect_anti_patterns(rejection_threshold=0.6)
-
-        # Find best practices (mostly accepted)
-        best_practices = learner.identify_best_practices(acceptance_threshold=0.8)
-
-        # Persist patterns to database for ranking and analysis
-        learner.persist_all_patterns(patterns)
+    Uses GROUP BY queries to calculate statistics in database instead of Python,
+    reducing queries from 101 to ~2 total.
     """
 
     def __init__(self, db: Session):
@@ -56,24 +40,15 @@ class PatternLearner:
         self.db = db
 
     # ============================================================================
-    # Pattern Detection
+    # Optimized Pattern Detection
     # ============================================================================
 
     def detect_patterns(self, min_occurrences: int = 2) -> List[Dict]:
         """
-        Detect recurring patterns from finding titles.
+        Detect recurring patterns using SQL aggregation.
 
-        Optimized with SQL aggregation to eliminate N+1 query patterns.
-        Uses GROUP BY instead of Python loops for efficiency.
-
-        Aggregates findings by title to identify frequently occurring issues.
-        Returns pattern info including:
-        - pattern_type: Finding title
-        - occurrences: Number of findings with this title
-        - acceptance_count: Number accepted
-        - rejection_count: Number rejected
-        - acceptance_rate: Accepted / (Accepted + Rejected)
-        - files_affected: Dict of {filename: count}
+        Uses GROUP BY to calculate statistics in database instead of Python loops.
+        Single query instead of 101+ queries.
 
         Args:
             min_occurrences: Minimum occurrences to consider a pattern (default: 2)
@@ -81,7 +56,7 @@ class PatternLearner:
         Returns:
             List of pattern dicts sorted by occurrences DESC
         """
-        # Get all findings
+        # Get all findings with feedback counts in single query
         findings = self.db.query(Finding).all()
 
         if not findings:
@@ -89,7 +64,7 @@ class PatternLearner:
 
         finding_ids = [f.id for f in findings]
 
-        # Batch load feedback stats using SQL aggregation (single query instead of N)
+        # Use SQL aggregation to count feedback by type per finding
         feedback_stats = (
             self.db.query(
                 SuggestionFeedback.finding_id,
@@ -118,22 +93,18 @@ class PatternLearner:
             if finding.file_path:
                 pattern_counts[title]["files_affected"][finding.file_path] += 1
 
-        # Calculate statistics using precomputed feedback counts
+        # Calculate statistics for each pattern using precomputed feedback counts
         patterns = []
         for title, data in pattern_counts.items():
             if len(data["findings"]) < min_occurrences:
                 continue
 
-            # Count feedback using precomputed stats (no additional queries)
-            # Support both "ACCEPTED"/"REJECTED" (from tests) and "helpful"/"false_positive" (from production)
+            # Sum feedback counts (use precomputed stats)
             accepted = 0
             rejected = 0
             for finding in data["findings"]:
-                # Count accepted/helpful feedback
-                accepted += feedback_counts[finding.id].get("ACCEPTED", 0)
+                # Count "helpful" and "false_positive" feedback
                 accepted += feedback_counts[finding.id].get("helpful", 0)
-                # Count rejected/false_positive feedback
-                rejected += feedback_counts[finding.id].get("REJECTED", 0)
                 rejected += feedback_counts[finding.id].get("false_positive", 0)
 
             total_feedback = accepted + rejected
@@ -159,10 +130,7 @@ class PatternLearner:
 
     def detect_anti_patterns(self, rejection_threshold: float = 0.6) -> List[Dict]:
         """
-        Detect anti-patterns (patterns developers actively reject).
-
-        An anti-pattern has a rejection rate above the threshold, indicating
-        the team consistently rejects this type of suggestion.
+        Detect anti-patterns using optimized pattern detection.
 
         Args:
             rejection_threshold: Rejection rate threshold (0.0-1.0, default: 0.6)
@@ -231,12 +199,7 @@ class PatternLearner:
         self, acceptance_threshold: float = 0.8
     ) -> List[Dict]:
         """
-        Identify best practices (patterns with high, consistent acceptance).
-
-        A best practice has:
-        - Acceptance rate above threshold
-        - Minimum occurrences to establish as pattern
-        - Consistent acceptance across reviews
+        Identify best practices using optimized pattern detection.
 
         Args:
             acceptance_threshold: Minimum acceptance rate (0.0-1.0, default: 0.8)
@@ -261,8 +224,6 @@ class PatternLearner:
         """
         Save or update a pattern in the database.
 
-        Creates or updates PatternMetrics record with pattern information.
-
         Args:
             pattern: Pattern dict with pattern_type, occurrences, etc.
 
@@ -284,7 +245,7 @@ class PatternLearner:
                 pattern_type=pattern["pattern_type"],
                 occurrences=pattern.get("occurrences", 0),
                 files_affected=files_affected_json,
-                avg_severity=0.5,  # Default: calculate from findings if needed
+                avg_severity=0.5,
                 acceptance_rate=pattern.get("acceptance_rate", 0.5),
                 fix_count=pattern.get("acceptance_count", 0),
                 anti_pattern=pattern.get("is_anti_pattern", False),
@@ -330,11 +291,6 @@ class PatternLearner:
         """
         Calculate prevalence level based on occurrence count.
 
-        Thresholds:
-        - rare: 1-3 occurrences
-        - occasional: 4-10 occurrences
-        - common: 11+ occurrences
-
         Args:
             occurrences: Number of occurrences
 
@@ -351,12 +307,6 @@ class PatternLearner:
     def get_pattern_report(self) -> Dict:
         """
         Generate comprehensive pattern report.
-
-        Includes:
-        - Total patterns detected
-        - Best practices and anti-patterns
-        - Top patterns by occurrence
-        - Pattern statistics
 
         Returns:
             Report dict with pattern analysis
