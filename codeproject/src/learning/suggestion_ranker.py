@@ -284,6 +284,41 @@ class SuggestionRanker:
         # Cap at 1.0
         return min(total_score, 1.0)
 
+    def _preload_feedback_by_finding(self, finding_ids: List[int]) -> dict:
+        """Batch load feedback for findings (eliminates N+1 queries)."""
+        if not finding_ids:
+            return {}
+        from sqlalchemy import func as sqla_func
+        feedbacks = (
+            self.db.query(SuggestionFeedback)
+            .filter(SuggestionFeedback.finding_id.in_(finding_ids))
+            .all()
+        )
+        feedback_by_finding = {}
+        for feedback in feedbacks:
+            if feedback.finding_id not in feedback_by_finding:
+                feedback_by_finding[feedback.finding_id] = []
+            feedback_by_finding[feedback.finding_id].append(feedback)
+        return feedback_by_finding
+
+    def _preload_learning_metrics(self) -> dict:
+        """Batch load learning metrics (eliminates N+1 queries)."""
+        metrics = self.db.query(LearningMetrics).all()
+        metrics_by_key = {}
+        for m in metrics:
+            key = (m.category, m.severity)
+            metrics_by_key[key] = m
+        return metrics_by_key
+
+    def _preload_pattern_metrics(self) -> dict:
+        """Batch load pattern metrics (eliminates N+1 queries)."""
+        from src.database import PatternMetrics
+        patterns = self.db.query(PatternMetrics).all()
+        patterns_by_type = {}
+        for p in patterns:
+            patterns_by_type[p.pattern_type] = p
+        return patterns_by_type
+
     def rank_findings(
         self,
         findings: list[Finding],
@@ -292,6 +327,9 @@ class SuggestionRanker:
     ) -> list[tuple[Finding, float, dict]]:
         """
         Rank findings by composite score, applying diversity factor.
+
+        Optimized with batch data loading to eliminate N+1 query patterns.
+        Preloads all required data once, then scores findings locally.
 
         Returns findings sorted by score (highest first), with component
         scores for transparency and debugging. Applies diversity factor
@@ -309,16 +347,61 @@ class SuggestionRanker:
         if not findings:
             return []
 
+        finding_ids = [f.id for f in findings]
+
+        # Preload all data in bulk queries (reduces from 7 per finding to ~4 total)
+        feedback_by_finding = self._preload_feedback_by_finding(finding_ids)
+        metrics_by_key = self._preload_learning_metrics()
+        patterns_by_type = self._preload_pattern_metrics()
+
         dedup_service = DeduplicationService(self.db)
         ranked = []
 
         for finding in findings:
+            # Use preloaded data instead of per-finding queries
+            feedbacks = feedback_by_finding.get(finding.id, [])
+
+            # Calculate confidence from preloaded feedback
+            if feedbacks:
+                confidences = [f.confidence for f in feedbacks if f.confidence is not None]
+                confidence = (sum(confidences) / len(confidences)) if confidences else 0.5
+                if tuner:
+                    confidence = tuner.apply_calibration_to_finding(confidence, "balanced")
+            else:
+                confidence = 0.5
+
+            # Get metrics from preloaded data
+            metrics_key = (finding.category, finding.severity)
+            metrics = metrics_by_key.get(metrics_key)
+            acceptance_rate = (metrics.accuracy / 100.0 if metrics and metrics.accuracy else 0.5)
+
+            # Get pattern impact from preloaded data
+            pattern = patterns_by_type.get(finding.title)
+            severity_weight = {"critical": 1.0, "high": 0.75, "medium": 0.50, "low": 0.25}
+            severity_score = severity_weight.get(finding.severity.value, 0.5)
+            prevalence_score = 0.5
+            if pattern:
+                prevalence_weight = {"rare": 0.3, "occasional": 0.6, "common": 1.0}
+                prevalence_score = prevalence_weight.get(pattern.team_prevalence.lower(), 0.5)
+            impact_score = (severity_score + prevalence_score) / 2
+
+            # Get fix time from preloaded metrics
+            fix_time = 0.5
+            if metrics and metrics.avg_time_to_fix:
+                hours = metrics.avg_time_to_fix
+                fix_time = 1.0 if hours < 1 else (0.75 if hours < 4 else (0.50 if hours < 8 else 0.25))
+
+            # Get team preference from preloaded data
+            team_pref = acceptance_rate
+            if pattern and pattern.anti_pattern:
+                team_pref = min(acceptance_rate * 1.2, 1.0)
+
             scores = {
-                "confidence": self.get_confidence_score(finding, tuner),
-                "acceptance_rate": self.get_acceptance_rate_score(finding),
-                "impact_score": self.get_impact_score(finding),
-                "fix_time": self.get_fix_time_score(finding),
-                "team_preference": self.get_team_preference_score(finding),
+                "confidence": confidence,
+                "acceptance_rate": acceptance_rate,
+                "impact_score": impact_score,
+                "fix_time": fix_time,
+                "team_preference": team_pref,
             }
 
             total_score = sum(scores[key] * self.weights[key] for key in scores)
