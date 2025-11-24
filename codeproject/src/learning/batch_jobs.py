@@ -38,6 +38,7 @@ from sqlalchemy import Column, Integer, String, DateTime, Text, Enum as SQLEnum
 from sqlalchemy.orm import Session
 
 from src.database import Base
+from src.monitoring import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -182,17 +183,25 @@ class BatchJob(ABC):
         self.db.commit()
 
         self.logger.info(f"Starting job: {self.name}")
+        metrics = get_metrics()
+        metrics.register_counter("batch_jobs_executed_total").increment()
 
         try:
             execution.mark_running()
             self.db.commit()
 
             # Execute job
+            start_time = time.time()
             result = self.execute()
+            duration = time.time() - start_time
 
             # Mark succeeded
             execution.mark_succeeded(result)
             self.logger.info(f"Job succeeded: {self.name} (duration: {execution.duration_seconds}s)")
+
+            # Record metrics
+            metrics.register_counter("batch_jobs_succeeded_total").increment()
+            metrics.register_histogram("batch_job_duration_seconds").observe(duration)
 
         except Exception as e:
             self.logger.error(f"Job failed: {self.name} - {str(e)}", exc_info=True)
@@ -207,8 +216,12 @@ class BatchJob(ABC):
                 # Exponential backoff: 5s, 25s, 125s
                 backoff_delay = 5 * (5 ** execution.retry_count)
                 self.logger.info(f"Retry in {backoff_delay}s")
+
+                # Record metrics
+                metrics.register_counter("batch_jobs_retried_total").increment()
             else:
                 self.logger.error(f"Job failed permanently: {self.name}")
+                metrics.register_counter("batch_jobs_failed_total").increment()
 
         finally:
             self.db.commit()

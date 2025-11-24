@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Column, Integer, String, Text, DateTime, Float
 
 from src.database import Base
+from src.monitoring import get_metrics
 
 
 class CacheType(str, Enum):
@@ -168,12 +169,14 @@ class CacheManager:
             Cached value or None if not found/expired
         """
         key = self._make_key(cache_type, repo_url, params)
+        metrics = get_metrics()
 
         # Try memory cache first
         if key in self.memory_cache:
             entry_data = self.memory_cache[key]
             if entry_data["expires_at"] > datetime.now(timezone.utc):
                 self.stats.hits += 1
+                metrics.register_counter("cache_hits_total").increment()
                 return entry_data["value"]
             else:
                 # Expired in memory, remove it
@@ -198,10 +201,12 @@ class CacheManager:
             }
 
             self.stats.hits += 1
+            metrics.register_counter("cache_hits_total").increment()
             return value
 
         # Cache miss
         self.stats.misses += 1
+        metrics.register_counter("cache_misses_total").increment()
         return None
 
     def set(
@@ -276,6 +281,7 @@ class CacheManager:
             Count of invalidated entries
         """
         count = 0
+        metrics = get_metrics()
 
         # Invalidate memory cache
         keys_to_delete = []
@@ -301,6 +307,7 @@ class CacheManager:
         self.db.commit()
 
         self.stats.invalidations += count
+        metrics.register_counter("cache_invalidations_total").increment(count)
         return count
 
     def clear_expired(self) -> int:
@@ -338,6 +345,13 @@ class CacheManager:
             .filter(CacheEntry.expires_at < datetime.now(timezone.utc))
             .count()
         )
+
+        metrics = get_metrics()
+        metrics.register_gauge("cache_memory_entries").set(memory_entries)
+        metrics.register_gauge("cache_database_entries").set(db_entries)
+
+        hit_rate = self.stats.hit_rate
+        metrics.register_gauge("insights_cache_hit_rate").set(hit_rate)
 
         return {
             "memory_entries": memory_entries,
